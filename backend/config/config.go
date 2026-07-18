@@ -221,7 +221,7 @@ func isEncrypted(s string) bool {
 // loadConfigPrivateKey 加载配置加密专用私钥
 // 路径: key/config-private.pem（与前端登录加密用的 PrivateKey.pem 分开）
 func loadConfigPrivateKey() error {
-	keyPath := "./key/config-private.pem"
+	keyPath := GlobalConfig.System.RSAPrivateKeyPath
 	data, err := os.ReadFile(keyPath)
 	if err != nil {
 		// 文件不存在时不报错，只是不启用配置解密
