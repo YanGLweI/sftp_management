@@ -1,0 +1,4 @@
+.vscode/settings.json
+data/
+.schedule.*
+schedule.ini

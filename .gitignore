@@ -1,0 +1,24 @@
+# Dependencies
+backend/vendor/
+frontend/node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# Build output
+frontend/dist/
+backend/sftpbackend
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Data files (sensitive/runtime generated)
+backend/data/
+backend/schedule.ini
+backend/.schedule.*
+
+# Keys and certificates (sensitive)
+backend/key/
+backend/certificate/
