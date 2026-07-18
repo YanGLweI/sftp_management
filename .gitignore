@@ -16,9 +16,7 @@ Thumbs.db
 
 # Data files (sensitive/runtime generated)
 backend/data/
-backend/schedule.ini
-backend/.schedule.*
 
 # Keys and certificates (sensitive)
-backend/key/
-backend/certificate/
+backend/key/*.pem
+backend/certificate/*.crt
