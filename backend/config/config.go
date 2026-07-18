@@ -164,9 +164,6 @@ func init() {
 
 }
 
-// ConfigPrivateKey 配置加密专用私钥（用于解密 ENC[...] 格式的配置值）
-var ConfigPrivateKey *rsa.PrivateKey
-
 // ! 从文件中读取并解析RSA私钥
 func parsePrivateKey() (*rsa.PrivateKey, error) {
 	// 从配置文件中获取RSA私钥路径
@@ -184,14 +181,14 @@ func parsePrivateKey() (*rsa.PrivateKey, error) {
 }
 
 // decryptConfigField 解密单个配置字段
-// 如果值是 ENC[base64] 格式，则使用配置加密私钥解密
+// 如果值是 ENC[base64] 格式，则使用提供的私钥解密
 // 如果不是加密格式，则原样返回
-func decryptConfigField(value string) (string, error) {
+func decryptConfigField(value string, privKey *rsa.PrivateKey) (string, error) {
 	if !isEncrypted(value) {
 		return value, nil
 	}
 
-	if ConfigPrivateKey == nil {
+	if privKey == nil {
 		return "", fmt.Errorf("配置字段已加密，但未加载配置解密密钥")
 	}
 
@@ -205,7 +202,7 @@ func decryptConfigField(value string) (string, error) {
 	}
 
 	// RSA-OAEP 解密
-	plaintext, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, ConfigPrivateKey, data, nil)
+	plaintext, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, privKey, data, nil)
 	if err != nil {
 		return "", fmt.Errorf("RSA-OAEP 解密失败: %w", err)
 	}
@@ -220,54 +217,52 @@ func isEncrypted(s string) bool {
 
 // loadConfigPrivateKey 加载配置加密专用私钥
 // 路径: key/config-private.pem（与前端登录加密用的 PrivateKey.pem 分开）
-func loadConfigPrivateKey() error {
+func loadConfigPrivateKey() (*rsa.PrivateKey, error) {
 	keyPath := GlobalConfig.System.RSAPrivateKeyPath
 	data, err := os.ReadFile(keyPath)
 	if err != nil {
 		// 文件不存在时不报错，只是不启用配置解密
-		return nil
+		return nil, nil
 	}
 
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return fmt.Errorf("无法解码配置私钥 PEM 块")
+		return nil, fmt.Errorf("无法解码配置私钥 PEM 块")
 	}
 
 	privKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
-		return fmt.Errorf("解析配置私钥失败: %w", err)
+		return nil, fmt.Errorf("解析配置私钥失败: %w", err)
 	}
 
-	ConfigPrivateKey = privKey
-	return nil
+	return privKey, nil
 }
 
 // DecryptConfig 解密配置中所有 ENC[...] 格式的敏感字段
 // 应在 init() 中加载配置后调用
 func DecryptConfig() error {
 	// 加载配置加密私钥
-	if err := loadConfigPrivateKey(); err != nil {
+	privKey, err := loadConfigPrivateKey()
+	if err != nil {
 		return fmt.Errorf("加载配置加密私钥失败: %w", err)
 	}
 
 	// 如果没有配置私钥，跳过解密（兼容未加密的配置）
-	if ConfigPrivateKey == nil {
+	if privKey == nil {
 		return nil
 	}
 
 	var firstErr error
 
 	// 解密数据库密码
-	if decrypted, err := decryptConfigField(GlobalConfig.Database.Password); err != nil {
-		if firstErr == nil {
-			firstErr = fmt.Errorf("解密 database.password 失败: %w", err)
-		}
+	if decrypted, err := decryptConfigField(GlobalConfig.Database.Password, privKey); err != nil {
+		firstErr = fmt.Errorf("解密 database.password 失败: %w", err)
 	} else {
 		GlobalConfig.Database.Password = decrypted
 	}
 
 	// 解密邮件密码
-	if decrypted, err := decryptConfigField(GlobalConfig.Email.Password); err != nil {
+	if decrypted, err := decryptConfigField(GlobalConfig.Email.Password, privKey); err != nil {
 		if firstErr == nil {
 			firstErr = fmt.Errorf("解密 email.password 失败: %w", err)
 		}
@@ -276,7 +271,7 @@ func DecryptConfig() error {
 	}
 
 	// 解密 LDAP 密码
-	if decrypted, err := decryptConfigField(GlobalConfig.LDAP.Password); err != nil {
+	if decrypted, err := decryptConfigField(GlobalConfig.LDAP.Password, privKey); err != nil {
 		if firstErr == nil {
 			firstErr = fmt.Errorf("解密 ldap.password 失败: %w", err)
 		}
@@ -285,7 +280,7 @@ func DecryptConfig() error {
 	}
 
 	// 解密 JWT Secret
-	if decrypted, err := decryptConfigField(GlobalConfig.JWT.Secret); err != nil {
+	if decrypted, err := decryptConfigField(GlobalConfig.JWT.Secret, privKey); err != nil {
 		if firstErr == nil {
 			firstErr = fmt.Errorf("解密 jwt.secret 失败: %w", err)
 		}
