@@ -263,57 +263,95 @@ func DecryptConfig() error {
 	return decryptStructFields(reflect.ValueOf(&GlobalConfig).Elem(), privKey, "")
 }
 
-// decryptStructFields 递归遍历结构体，解密所有 ENC[...] 格式的 string 字段
+// ! decryptStructFields 递归遍历结构体，解密所有 ENC[...] 格式的 string 字段
+//
+// 参数说明：
+//   - v:        当前要遍历的 reflect.Value（结构体值）
+//   - privKey:  RSA 私钥，用于解密 ENC[...] 密文
+//   - path:     当前字段的路径前缀，如 "Database"，用于拼接错误信息
+//
+// 工作原理：
+//  1. 拿到结构体后，逐个字段遍历
+//  2. 如果字段是 string 且值为 "ENC[xxx]" 格式 → 解密并写回
+//  3. 如果字段是嵌套结构体 → 递归进入下一层
+//  4. 如果字段是 []string 切片 → 逐个元素检查并解密
 func decryptStructFields(v reflect.Value, privKey *rsa.PrivateKey, path string) error {
+	// 第一步：如果传入的是指针，先解引用拿到实际值
+	// 例如 *Config → Config
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
+
+	// 第二步：安全检查，确保当前值确实是结构体
+	// 如果不是结构体（如 int、string 等基础类型），无需遍历，直接返回
 	if v.Kind() != reflect.Struct {
 		return nil
 	}
 
+	// 第三步：获取结构体的类型信息（用于读取字段名、判断是否导出等）
 	t := v.Type()
+	// firstErr 记录第一个遇到的解密错误，后续错误不会覆盖它
+	// 这样能保证所有字段都尝试解密，同时至少返回一个错误信息
 	var firstErr error
 
+	// 第四步：遍历结构体的每一个字段
 	for i := 0; i < v.NumField(); i++ {
+		// field: 字段的值（reflect.Value），可以通过 SetString 修改
 		field := v.Field(i)
+		// fieldType: 字段的元信息（名称、类型、tag 等）
 		fieldType := t.Field(i)
 
-		// 跳过未导出字段
+		// 第五步：跳过未导出字段（即小写字母开头的字段）
+		// 未导出字段无法通过反射修改（CanSet() 为 false），直接跳过
 		if !fieldType.IsExported() {
 			continue
 		}
 
-		// 构建字段路径（用于错误提示）
+		// 第六步：构建字段的完整路径，用于错误提示
+		// 例如：顶层字段 "Password" → "Password"
+		//       嵌套字段 → "Database.Password"
 		fieldPath := fieldType.Name
 		if path != "" {
 			fieldPath = path + "." + fieldType.Name
 		}
 
+		// 第七步：根据字段的类型分类处理
 		switch field.Kind() {
 		case reflect.String:
-			// 字符串字段：尝试解密
+			//! 【字符串字段】这是最常见的加密字段类型
+			// 先取出原始值，检查是否为 ENC[...] 格式
 			original := field.String()
 			if isEncrypted(original) {
+				// 是加密格式，调用解密函数
 				decrypted, err := decryptConfigField(original, privKey)
 				if err != nil {
+					// 解密失败：记录第一个错误（不中断，继续处理其他字段）
 					if firstErr == nil {
 						firstErr = fmt.Errorf("解密 %s 失败: %w", fieldPath, err)
 					}
 				} else {
+					// 解密成功：将明文写回字段（覆盖原来的 ENC[...] 密文）
 					field.SetString(decrypted)
 				}
 			}
+			// 如果不是 ENC[...] 格式，说明是普通明文，无需处理
+
 		case reflect.Struct:
-			// 嵌套结构体：递归遍历
+			//! 【嵌套结构体】例如 GlobalConfig.Database 是 DatabaseConfig 类型
+			// 递归调用自身，进入下一层结构体继续遍历
+			// 例如：Config → Database → Password（string）
 			if err := decryptStructFields(field, privKey, fieldPath); err != nil && firstErr == nil {
 				firstErr = err
 			}
+
 		case reflect.Slice:
-			// 切片中的字符串也需要检查（如 []string）
+			//! 【切片字段】例如 []string 类型的邮箱列表
+			// 先判断切片元素类型是否为 string
 			if field.Type().Elem().Kind() == reflect.String {
+				// 逐个检查切片中的每个元素
 				for j := 0; j < field.Len(); j++ {
-					elem := field.Index(j)
+					elem := field.Index(j) // 获取第 j 个元素的 reflect.Value
+					// CanSet() 确保元素可修改，isEncrypted() 检查是否为加密格式
 					if elem.CanSet() && isEncrypted(elem.String()) {
 						decrypted, err := decryptConfigField(elem.String(), privKey)
 						if err != nil {
@@ -329,5 +367,7 @@ func decryptStructFields(v reflect.Value, privKey *rsa.PrivateKey, path string) 
 		}
 	}
 
+	// 第八步：返回第一个遇到的错误（如果有）
+	// 注意：即使某个字段解密失败，其他字段仍然会被尝试解密
 	return firstErr
 }
