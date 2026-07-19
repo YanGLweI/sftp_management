@@ -19,7 +19,8 @@ import (
 type SystemConfig struct {
 	Port              int             `yaml:"port"`
 	Mode              string          `yaml:"mode"`            // debug or release
-	RSAPrivateKeyPath string          `yaml:"rsa-private-key"` // RSA私钥路径
+	RSAPrivateKeyPath string          `yaml:"rsa-private-key"` // RSA私钥路径（用于解密前端敏感信息）
+	ConfigKeyPath     string          `yaml:"config-key"`      // 配置加密私钥路径（用于解密 config.yml 中的 ENC[] 字段）
 	RSAPrivateKey     *rsa.PrivateKey `yaml:"-"`               // 解析RSA私钥
 }
 
@@ -164,10 +165,10 @@ func init() {
 
 }
 
-// ! 从文件中读取并解析RSA私钥
+// ! 从文件中读取并解析RSA私钥(用于解密前端敏感信息)
 func parsePrivateKey() (*rsa.PrivateKey, error) {
 	// 从配置文件中获取RSA私钥路径
-	privateKeyPath := "./key/config-key.pem"
+	privateKeyPath := GlobalConfig.System.RSAPrivateKeyPath
 	privateKeyBytes, err := os.ReadFile(privateKeyPath)
 	if err != nil {
 		return nil, err
@@ -216,9 +217,13 @@ func isEncrypted(s string) bool {
 }
 
 // loadConfigPrivateKey 加载配置加密专用私钥
-// 路径: key/config-key.pem（配置加密专用密钥对，与前端登录加密用的 PrivateKey.pem 分开）
+// 路径从 config.yml 的 system.config-key 读取
 func loadConfigPrivateKey() (*rsa.PrivateKey, error) {
-	keyPath := "./key/config-key.pem"
+	keyPath := GlobalConfig.System.ConfigKeyPath
+	if keyPath == "" {
+		// 未配置则跳过
+		return nil, nil
+	}
 	data, err := os.ReadFile(keyPath)
 	if err != nil {
 		// 文件不存在时不报错，只是不启用配置解密
