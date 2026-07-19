@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -243,8 +244,9 @@ func loadConfigPrivateKey() (*rsa.PrivateKey, error) {
 	return privKey, nil
 }
 
-// DecryptConfig 解密配置中所有 ENC[...] 格式的敏感字段
-// 应在 init() 中加载配置后调用
+// DecryptConfig 自动解密配置中所有 ENC[...] 格式的字段
+// 通过反射遍历 GlobalConfig 所有嵌套结构体的 string 字段
+// 新增加密字段无需修改代码，只要值是 ENC[...] 格式即自动解密
 func DecryptConfig() error {
 	// 加载配置加密私钥
 	privKey, err := loadConfigPrivateKey()
@@ -257,40 +259,74 @@ func DecryptConfig() error {
 		return nil
 	}
 
+	// 通过反射遍历并解密所有 ENC[...] 字段
+	return decryptStructFields(reflect.ValueOf(&GlobalConfig).Elem(), privKey, "")
+}
+
+// decryptStructFields 递归遍历结构体，解密所有 ENC[...] 格式的 string 字段
+func decryptStructFields(v reflect.Value, privKey *rsa.PrivateKey, path string) error {
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+
+	t := v.Type()
 	var firstErr error
 
-	// 解密数据库密码
-	if decrypted, err := decryptConfigField(GlobalConfig.Database.Password, privKey); err != nil {
-		firstErr = fmt.Errorf("解密 database.password 失败: %w", err)
-	} else {
-		GlobalConfig.Database.Password = decrypted
-	}
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldType := t.Field(i)
 
-	// 解密邮件密码
-	if decrypted, err := decryptConfigField(GlobalConfig.Email.Password, privKey); err != nil {
-		if firstErr == nil {
-			firstErr = fmt.Errorf("解密 email.password 失败: %w", err)
+		// 跳过未导出字段
+		if !fieldType.IsExported() {
+			continue
 		}
-	} else {
-		GlobalConfig.Email.Password = decrypted
-	}
 
-	// 解密 LDAP 密码
-	if decrypted, err := decryptConfigField(GlobalConfig.LDAP.Password, privKey); err != nil {
-		if firstErr == nil {
-			firstErr = fmt.Errorf("解密 ldap.password 失败: %w", err)
+		// 构建字段路径（用于错误提示）
+		fieldPath := fieldType.Name
+		if path != "" {
+			fieldPath = path + "." + fieldType.Name
 		}
-	} else {
-		GlobalConfig.LDAP.Password = decrypted
-	}
 
-	// 解密 JWT Secret
-	if decrypted, err := decryptConfigField(GlobalConfig.JWT.Secret, privKey); err != nil {
-		if firstErr == nil {
-			firstErr = fmt.Errorf("解密 jwt.secret 失败: %w", err)
+		switch field.Kind() {
+		case reflect.String:
+			// 字符串字段：尝试解密
+			original := field.String()
+			if isEncrypted(original) {
+				decrypted, err := decryptConfigField(original, privKey)
+				if err != nil {
+					if firstErr == nil {
+						firstErr = fmt.Errorf("解密 %s 失败: %w", fieldPath, err)
+					}
+				} else {
+					field.SetString(decrypted)
+				}
+			}
+		case reflect.Struct:
+			// 嵌套结构体：递归遍历
+			if err := decryptStructFields(field, privKey, fieldPath); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		case reflect.Slice:
+			// 切片中的字符串也需要检查（如 []string）
+			if field.Type().Elem().Kind() == reflect.String {
+				for j := 0; j < field.Len(); j++ {
+					elem := field.Index(j)
+					if elem.CanSet() && isEncrypted(elem.String()) {
+						decrypted, err := decryptConfigField(elem.String(), privKey)
+						if err != nil {
+							if firstErr == nil {
+								firstErr = fmt.Errorf("解密 %s[%d] 失败: %w", fieldPath, j, err)
+							}
+						} else {
+							elem.SetString(decrypted)
+						}
+					}
+				}
+			}
 		}
-	} else {
-		GlobalConfig.JWT.Secret = decrypted
 	}
 
 	return firstErr
