@@ -167,7 +167,7 @@ func init() {
 // ! 从文件中读取并解析RSA私钥
 func parsePrivateKey() (*rsa.PrivateKey, error) {
 	// 从配置文件中获取RSA私钥路径
-	privateKeyPath := GlobalConfig.System.RSAPrivateKeyPath
+	privateKeyPath := "./key/config-key.pem"
 	privateKeyBytes, err := os.ReadFile(privateKeyPath)
 	if err != nil {
 		return nil, err
@@ -216,9 +216,9 @@ func isEncrypted(s string) bool {
 }
 
 // loadConfigPrivateKey 加载配置加密专用私钥
-// 路径: key/config-private.pem（与前端登录加密用的 PrivateKey.pem 分开）
+// 路径: key/config-key.pem（配置加密专用密钥对，与前端登录加密用的 PrivateKey.pem 分开）
 func loadConfigPrivateKey() (*rsa.PrivateKey, error) {
-	keyPath := GlobalConfig.System.RSAPrivateKeyPath
+	keyPath := "./key/config-key.pem"
 	data, err := os.ReadFile(keyPath)
 	if err != nil {
 		// 文件不存在时不报错，只是不启用配置解密

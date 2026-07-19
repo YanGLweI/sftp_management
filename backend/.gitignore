@@ -4,4 +4,4 @@ data/
 schedule.ini
 
 # 配置加密私钥（绝不能提交）
-key/config-private.pem
+key/config-key.pem
