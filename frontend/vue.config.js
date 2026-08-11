@@ -54,9 +54,7 @@ module.exports = {
         target: 'http://10.60.254.127:8888',
         pathRewrite: { '^/dev-api': '' },
       },
-    },
-    // 开启mock数据
-    after: require('./mock/mock-server.js')
+    }
   },
   configureWebpack: {
     // provide the app's title in webpack's name field, so that

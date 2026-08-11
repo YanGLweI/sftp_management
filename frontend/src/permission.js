@@ -11,9 +11,19 @@ NProgress.configure({ showSpinner: false }) // NProgress Configuration
 
 const whiteList = ['/login','/file'] // no redirect whitelist
 
+// /file 为对外独立页面：自身及其子路径均不重定向到主登录页
+const isFileRoute = path => path === '/file' || path.startsWith('/file/')
+
 router.beforeEach(async(to, from, next) => {
   // start progress bar
   NProgress.start()
+
+  // 不存在的 /file 子路由：直接回 /file 页面，不进入登录重定向逻辑
+  if (to.path.startsWith('/file/')) {
+    next('/file')
+    NProgress.done()
+    return
+  }
 
   // set page title
   document.title = getPageTitle(to.meta.title)
@@ -46,7 +56,7 @@ router.beforeEach(async(to, from, next) => {
           await store.dispatch('user/resetToken')
           Message.error(error || 'Has Error')
           Vue.prototype.$idleTimeout.stop()
-          next(`/login?redirect=${to.path}`)
+          next(isFileRoute(to.path) ? '/file' : `/login?redirect=${to.path}`)
           NProgress.done()
         }
       }

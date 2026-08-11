@@ -20,3 +20,5 @@ backend/data/
 # Keys and certificates (sensitive)
 backend/key/*.pem
 backend/certificate/*.crt
+
+.qoder/
