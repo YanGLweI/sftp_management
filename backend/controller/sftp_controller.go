@@ -874,3 +874,110 @@ func writeFileToZip(zipW *zip.Writer, conn *utils.SFTPConnection, remotePath, zi
 	_, err = io.Copy(zipFile, srcFile)
 	return err
 }
+
+// ! SearchFiles 递归搜索文件和目录（不区分大小写模糊匹配）
+func SearchFiles(c *gin.Context) {
+	// 1. 获取Token
+	token := getSFTPToken(c)
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "SFTP Token不能为空",
+		})
+		return
+	}
+
+	// 2. 通过Token获取对应的连接实例
+	conn, err := utils.SFTPConnManager.GetConn(token)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    50014,
+			"message": "SFTP连接失效: " + err.Error(),
+		})
+		return
+	}
+
+	// 3. 获取搜索参数
+	searchPath := c.Query("path")
+	if searchPath == "" {
+		searchPath = "/"
+	}
+	keyword := c.Query("keyword")
+	if keyword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "搜索关键字不能为空",
+		})
+		return
+	}
+
+	// 4. 验证搜索路径是否存在
+	fileInfo, err := conn.SftpClient.Stat(searchPath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    404,
+			"message": "搜索路径不存在: " + err.Error(),
+		})
+		return
+	}
+	if !fileInfo.IsDir() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "搜索路径不是目录",
+		})
+		return
+	}
+
+	// 5. 递归搜索
+	var results []models.SearchFileInfo
+	recursiveSearch(conn, searchPath, keyword, &results)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "搜索完成",
+		"data": gin.H{
+			"total":   len(results),
+			"results": results,
+		},
+	})
+}
+
+// recursiveSearch 递归搜索目录，匹配文件名（不区分大小写）
+func recursiveSearch(conn *utils.SFTPConnection, dirPath, keyword string, results *[]models.SearchFileInfo) error {
+	files, err := conn.SftpClient.ReadDir(dirPath)
+	if err != nil {
+		// 跳过无权限或无法读取的目录
+		return nil
+	}
+
+	lowerKeyword := strings.ToLower(keyword)
+
+	for _, f := range files {
+		// 跳过隐藏文件/目录
+		if strings.HasPrefix(f.Name(), ".") {
+			continue
+		}
+
+		fullPath := filepath.Join(dirPath, f.Name())
+
+		// 模糊匹配文件名（不区分大小写）
+		if strings.Contains(strings.ToLower(f.Name()), lowerKeyword) {
+			*results = append(*results, models.SearchFileInfo{
+				FileInfo: models.FileInfo{
+					Name:     f.Name(),
+					Path:     fullPath,
+					IsDir:    f.IsDir(),
+					Size:     f.Size(),
+					Modified: f.ModTime().Format(time.RFC3339),
+				},
+				ParentPath: dirPath,
+			})
+		}
+
+		// 递归进入子目录
+		if f.IsDir() {
+			recursiveSearch(conn, fullPath, keyword, results)
+		}
+	}
+	return nil
+}

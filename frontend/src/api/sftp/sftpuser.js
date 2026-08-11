@@ -52,3 +52,6 @@ export const reqSftpDownloadDir = (path) => request({url:'/sftp/downloaddir',met
 
 // ! 批量删除文件或目录 /sftp/batchdelete post
 export const reqSftpBatchDelete = (data) => request({url:'/sftp/batchdelete',method:'post',data})
+
+// ! 递归搜索文件或目录 /sftp/search get
+export const reqSftpSearch = (params) => request({url:'/sftp/search',method:'get',params})

@@ -14,3 +14,9 @@ type FileInfo struct {
 	Size     int64  `json:"size"`     // 文件大小字节
 	Modified string `json:"modified"` // 修改时间
 }
+
+// 搜索结果文件信息结构体（包含父目录路径）
+type SearchFileInfo struct {
+	FileInfo
+	ParentPath string `json:"parentPath"` // 父目录路径
+}

@@ -33,5 +33,7 @@ func registerSFTPRouter(r *gin.Engine) {
 		sftpGroup.GET("/downloaddir", controller.DownloadDirectory)
 		// 批量删除
 		sftpGroup.POST("/batchdelete", controller.BatchDelete)
+		// 递归搜索文件或目录：请求参数 /search?path=string&keyword=string
+		sftpGroup.GET("/search", controller.SearchFiles)
 	}
 }

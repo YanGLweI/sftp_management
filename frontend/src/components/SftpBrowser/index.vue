@@ -42,8 +42,8 @@
           ></el-progress>  
         </div>
 
-        <div style="width: 260px;">
-          <el-button icon="el-icon-refresh" circle size="mini" style="margin-right: 10px;" @click="fetchFiles()"></el-button>
+        <div style="width: 360px; display: flex; align-items: center; flex-wrap: nowrap; gap: 8px;">
+          <el-button icon="el-icon-refresh" circle size="mini" @click="fetchFiles()"></el-button>
           <el-upload
             class="upload"
             :action="uploadUrl"
@@ -66,6 +66,14 @@
             round
             @click="handleCreateDir"
           >创建目录</el-button>
+
+          <el-button
+            type="warning"
+            size="mini"
+            icon="el-icon-search"
+            round
+            @click="openDeepSearch"
+          >搜索</el-button>
         </div>
       </div>
       <!-- 文件列表 -->
@@ -80,9 +88,9 @@
           <el-table
             ref="multipleTable"
             @selection-change="handleSelectionChange"
-            :data="fileList"
+            :data="filteredFileList"
             v-loading="isLoading"
-            height="calc(100vh - 400px)"
+            :height="searchQuery ? 'calc(100vh - 440px)' : 'calc(100vh - 400px)'"
             border
             v-if="fileList"
           >
@@ -155,6 +163,29 @@
               </template>
             </el-table-column>
           </el-table>
+
+          <!-- 搜索框 -->
+          <div class="search-box-container" v-show="showSearchBox">
+            <div class="search-box">
+              <el-input
+                ref="searchInput"
+                v-model="searchQuery"
+                size="small"
+                placeholder="请输入文件名关键字..."
+                prefix-icon="el-icon-search"
+                clearable
+                @input="applyFilter"
+                @keyup.native.esc.native="handleCloseSearchBox"
+              ></el-input>
+              <el-button
+                size="small"
+                icon="el-icon-close"
+                circle
+                @click="handleCloseSearchBox"
+              ></el-button>
+            </div>
+          </div>
+          
           <div style="margin-top: 10px;margin-left: 10px; display: flex; justify-content: space-between; align-items: center;">
             <span style="color: #909399;" v-if="selectedFiles.length > 0">{{ selectDescription }}</span>
             <span style="color: #909399;" v-else>{{ description }}</span>
@@ -215,6 +246,141 @@
         <el-button type="danger" @click="confirmDelete">确定</el-button>
       </span>
     </el-dialog>
+    <!-- 递归搜索弹框 -->
+    <el-dialog
+      title="递归搜索"
+      :visible.sync="showDeepSearchDialog"
+      width="65%"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <el-form :inline="true" @submit.native.prevent="doDeepSearch" size="small">
+        <el-form-item label="搜索路径">
+          <el-input v-model="deepSearchPath" placeholder="输入搜索路径" style="width:280px" clearable></el-input>
+        </el-form-item>
+        <el-form-item label="关键字">
+          <el-input v-model="deepSearchKeyword" placeholder="输入关键字" style="width:220px" clearable
+            @keyup.enter.native="doDeepSearch"></el-input>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" icon="el-icon-search" @click="doDeepSearch" :loading="isSearching">搜索</el-button>
+        </el-form-item>
+      </el-form>
+
+      <!-- 骨架屏预占位（未搜索时显示） -->
+      <div v-if="!deepSearchHasSearched && !isSearching" class="skeleton-table-wrapper">
+        <el-skeleton :rows="8" animated>
+          <template slot="header">
+            <div style="display:flex;gap:16px;align-items:center;padding-bottom:12px;">
+              <el-skeleton-item variant="rect" style="width:55px;height:20px;" />
+              <el-skeleton-item variant="rect" style="width:200px;height:20px;" />
+              <el-skeleton-item variant="rect" style="width:80px;height:20px;" />
+              <el-skeleton-item variant="rect" style="width:160px;height:20px;" />
+              <el-skeleton-item variant="rect" style="width:120px;height:20px;" />
+            </div>
+          </template>
+        </el-skeleton>
+      </div>
+
+      <!-- 搜索结果表格 -->
+      <el-table
+        :data="deepSearchResults"
+        v-loading="isSearching"
+        border
+        max-height="400"
+        v-if="deepSearchResults.length > 0 || isSearching"
+      >
+        <el-table-column prop="name" label="名称" sortable show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <div v-if="row.isRenaming">
+              <el-input
+                v-model="row.editName"
+                size="mini"
+                @keyup.enter.native="confirmDeepSearchRename(row)"
+                @blur="cancelDeepSearchRename(row)"
+                v-focus="true"
+              ></el-input>
+            </div>
+            <div v-else :class="{'dir-item': row.isDir, 'file-item': !row.isDir}">
+              <i :class="row.isDir ? 'el-icon-folder' : 'el-icon-document'"></i>
+              {{ row.name }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="parentPath" label="所在路径" show-overflow-tooltip></el-table-column>
+        <el-table-column prop="size" label="大小" width="120" sortable>
+          <template slot-scope="{row}">
+            {{ row.isDir ? '-' : formatSize(row.size) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="modified" label="修改时间" width="200" sortable>
+          <template slot-scope="{row}">
+            {{ formatDate(row.modified) }}
+          </template>
+        </el-table-column>
+        <el-table-column align="center" label="操作" width="150" fixed="right">
+          <template slot-scope="{row}">
+            <el-button
+              v-if="!row.isDir"
+              size="mini"
+              type="primary"
+              @click="handleDownload(row)"
+              circle
+              icon="el-icon-download"
+            ></el-button>
+            <el-button
+              v-else
+              size="mini"
+              type="primary"
+              @click="handleDownloadDir(row)"
+              circle
+              icon="el-icon-download"
+            ></el-button>
+            <el-button
+              size="mini"
+              circle
+              icon="el-icon-edit"
+              @click="startDeepSearchRename(row)"
+            ></el-button>
+            <el-button
+              size="mini"
+              type="danger"
+              @click="handleDeepSearchDelete(row)"
+              circle
+              icon="el-icon-delete"
+            ></el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 无结果提示 -->
+      <el-empty
+        v-if="!isSearching && deepSearchResults.length === 0 && deepSearchHasSearched"
+        description="未找到匹配的文件或目录"
+        :image-size="80"
+      ></el-empty>
+
+      <!-- 搜索结果统计 -->
+      <div v-if="!isSearching && deepSearchResults.length > 0" style="margin-top:10px;color:#909399;font-size:13px;">
+        共找到 {{ deepSearchResults.length }} 个结果
+      </div>
+    </el-dialog>
+
+    <!-- 搜索删除确认 -->
+    <el-dialog
+      title="确认删除"
+      :visible.sync="deepSearchDeleteDialogVisible"
+      width="30%"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <span>确定要删除 {{ deepSearchDeleteTarget.name }} 吗？</span>
+      <span slot="footer">
+        <el-button @click="deepSearchDeleteDialogVisible = false">取消</el-button>
+        <el-button type="danger" @click="confirmDeepSearchDelete">确定</el-button>
+      </span>
+    </el-dialog>
+
     <!-- 批量删除确认 -->
     <el-dialog
       title="批量删除"
@@ -317,7 +483,21 @@ export default {
       isUploading: false,              // 防止重复上传
       // 描述
       description: '', // 当前目录描述
-      selectDescription: '' // 选中的文件描述
+      selectDescription: '', // 选中的文件描述
+      // 搜索功能相关
+      searchQuery: '',           // 搜索关键词
+      showSearchBox: false,      // 搜索框显隐控制
+      filteredFileList: [],      // 过滤后的文件列表
+      originalFileList: [],      // 原始文件列表（用于还原）
+      // 递归搜索相关
+      showDeepSearchDialog: false,       // 搜索弹框显隐
+      deepSearchPath: '',                // 搜索路径
+      deepSearchKeyword: '',             // 搜索关键字
+      deepSearchResults: [],             // 搜索结果
+      isSearching: false,                // 搜索中状态
+      deepSearchHasSearched: false,      // 是否已执行过搜索
+      deepSearchDeleteDialogVisible: false, // 搜索删除确认弹框
+      deepSearchDeleteTarget: { name: '', path: '', isDir: false }, // 搜索中待删除目标
     }
   },
   mounted() {
@@ -355,10 +535,17 @@ export default {
         const res = await this.$API.sftpuser.reqSftpFiles({ path })
         if (res.code === 200) {
           this.fileList = res.data.files
-          // console.log(this.fileList)
+          // 保存原始数据用于搜索还原
+          this.originalFileList = JSON.parse(JSON.stringify(res.data.files))
           this.currentPath = res.data.path
           this.description = res.data.description
           this.updateBreadcrumb()
+          // 如果已有搜索内容，重新应用过滤
+          if (this.searchQuery) {
+            this.applyFilter()
+          } else {
+            this.filteredFileList = this.fileList
+          }
         }
       } catch (e) {
         this.$message.error('获取文件列表失败')
@@ -505,6 +692,18 @@ export default {
       this.isLoading = false;
       // 重置拖拽状态
       this.dragOverlayVisible = false;
+      // 重置搜索状态
+      this.searchQuery = ''
+      this.showSearchBox = false
+      this.filteredFileList = []
+      this.originalFileList = []
+      // 重置递归搜索状态
+      this.showDeepSearchDialog = false
+      this.deepSearchPath = ''
+      this.deepSearchKeyword = ''
+      this.deepSearchResults = []
+      this.isSearching = false
+      this.deepSearchHasSearched = false
       // 通知父组件关闭
       this.$emit('close')
     },
@@ -545,6 +744,48 @@ export default {
         this.selectDescription = ` ${fileCount} 个文件 和 ${dirCount} 个目录`
       }
     },
+    // 应用搜索过滤
+    applyFilter() {
+      if (!this.searchQuery.trim()) {
+        this.filteredFileList = this.originalFileList
+        return
+      }
+      const query = this.searchQuery.toLowerCase()
+      this.filteredFileList = this.originalFileList.filter(item => 
+        item.name.toLowerCase().includes(query)
+      )
+    },
+    // 切换搜索框显示
+    toggleSearchBox() {
+      this.showSearchBox = !this.showSearchBox
+      if (this.showSearchBox) {
+        // 打开时聚焦到搜索输入框
+        this.$nextTick(() => {
+          if (this.$refs.searchInput) {
+            this.$refs.searchInput.focus()
+          }
+        })
+      } else {
+        // 关闭时重置
+        this.resetSearch()
+      }
+    },
+    // 重置搜索
+    resetSearch() {
+      this.searchQuery = ''
+      this.showSearchBox = false
+      this.filteredFileList = this.originalFileList
+    },
+    // 关闭搜索框（通过按钮或 esc）
+    handleCloseSearchBox() {
+      this.showSearchBox = false
+      this.searchQuery = ''
+      this.filteredFileList = this.originalFileList
+      // 关闭后聚焦到容器避免焦点丢失
+      this.$nextTick(() => {
+        document.activeElement.blur()
+      })
+    },
     // 批量删除
     async confirmBatchDelete(){
       try {
@@ -569,6 +810,35 @@ export default {
       })
     },
     handleKey(e) {
+      // 只有在组件可见时才处理按键事件
+      if (!this.innerVisible) return;
+      
+      // Ctrl/Cmd + F 切换搜索框
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.keyCode === 70)) {
+        e.preventDefault()
+        e.stopPropagation()
+        this.toggleSearchBox()
+        return
+      }
+      
+      // 判断是否为真正的文本输入元素（排除复选框、单选按钮、按钮等）
+      const tag = e.target.tagName;
+      const isTextInput = 
+        (tag === 'INPUT' && (e.target.type === 'text' || e.target.type === 'password' || e.target.type === 'search' || e.target.type === 'email' || e.target.type === 'tel' || e.target.type === 'url' || e.target.type === 'number')) ||
+        tag === 'TEXTAREA' || (e.target.isContentEditable === true);
+
+      if (isTextInput) return;
+      
+      // Esc 关闭搜索框
+      if (e.key === 'Escape' || e.keyCode === 27) {
+        if (this.showSearchBox) {
+          e.preventDefault()
+          this.handleCloseSearchBox()
+          return
+        }
+      }
+      
+      // F5 刷新
       if (e.key === 'F5'){
         e.preventDefault() // 阻止默认刷新行为
         e.stopPropagation()  // 阻止事件冒泡
@@ -578,16 +848,7 @@ export default {
         }
         return
       }
-      // 只有在组件可见时才处理按键事件
-      if (!this.innerVisible) return;
-      // 判断是否为真正的文本输入元素（排除复选框、单选按钮、按钮等）
-      const tag = e.target.tagName;
-      const isTextInput = 
-        (tag === 'INPUT' && (e.target.type === 'text' || e.target.type === 'password' || e.target.type === 'search' || e.target.type === 'email' || e.target.type === 'tel' || e.target.type === 'url' || e.target.type === 'number')) ||
-        tag === 'TEXTAREA' || (e.target.isContentEditable === true);
-
-      if (isTextInput) return;
-
+      
       // Backspace 返回上一级
       if (e.keyCode === 8 || e.key === 'Backspace') {
         this.goBack();
@@ -756,6 +1017,78 @@ export default {
         this.$refs.newDirInput.focus()
       })
     },
+    // 打开递归搜索弹框
+    openDeepSearch() {
+      this.deepSearchPath = this.currentPath
+      this.deepSearchKeyword = ''
+      this.deepSearchResults = []
+      this.deepSearchHasSearched = false
+      this.showDeepSearchDialog = true
+    },
+    // 执行递归搜索
+    async doDeepSearch() {
+      if (!this.deepSearchKeyword.trim()) {
+        return this.$message.warning('请输入搜索关键字')
+      }
+      if (!this.deepSearchPath.trim()) {
+        return this.$message.warning('请输入搜索路径')
+      }
+      this.isSearching = true
+      this.deepSearchHasSearched = true
+      try {
+        const res = await this.$API.sftpuser.reqSftpSearch({
+          path: this.deepSearchPath,
+          keyword: this.deepSearchKeyword
+        })
+        if (res.code === 200) {
+          this.deepSearchResults = res.data.results || []
+        }
+      } catch (e) {
+        this.$message.error('搜索失败')
+      } finally {
+        this.isSearching = false
+      }
+    },
+    // 搜索结果中开始重命名
+    startDeepSearchRename(row) {
+      this.$set(row, 'isRenaming', true)
+      this.$set(row, 'editName', row.name)
+    },
+    // 搜索结果中确认重命名
+    async confirmDeepSearchRename(row) {
+      if (!row.editName) return this.$message.warning('名称不能为空')
+      try {
+        const res = await this.$API.sftpuser.reqSftpRename({
+          oldPath: row.path,
+          newName: row.editName
+        })
+        if (res.code === 200) {
+          this.$message.success('重命名成功')
+          this.doDeepSearch()
+        }
+      } catch {} 
+    },
+    // 搜索结果中取消重命名
+    cancelDeepSearchRename(row) {
+      row.isRenaming = false
+    },
+    // 搜索结果中删除
+    handleDeepSearchDelete(row) {
+      this.deepSearchDeleteTarget = row
+      this.deepSearchDeleteDialogVisible = true
+    },
+    // 确认搜索结果中的删除
+    async confirmDeepSearchDelete() {
+      try {
+        const res = await this.$API.sftpuser.reqSftpDelete({ path: this.deepSearchDeleteTarget.path })
+        if (res.code === 200) {
+          this.$message.success('删除成功')
+          this.doDeepSearch()
+        }
+      } catch {} finally {
+        this.deepSearchDeleteDialogVisible = false
+      }
+    },
     // 打开批量删除确认对话框
     openBatchDeleteDialog() {
       if (this.selectedFiles.length === 0) {
@@ -775,7 +1108,7 @@ export default {
 .dir-item { color: #409EFF; cursor: pointer; }
 .file-item { color: #606266; }
 .operate { display: flex; justify-content: space-between; align-items: center; }
-.upload { display: inline-block; margin-right: 10px; }
+.upload { display: inline-block; }
 
 /* 表格容器相对定位，用于拖拽遮罩层绝对定位 */
 .table-container {
@@ -820,5 +1153,33 @@ export default {
 .drag-sub {
   font-size: 14px;
   opacity: 0.9;
+}
+
+/* 搜索框样式 */
+.search-box-container {
+  padding: 12px 15px;
+  background-color: #f5f7fa;
+  border-top: 1px solid #ebeef5;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.search-box .el-input {
+  flex: 1;
+}
+
+/* 骨架屏表格占位 */
+.skeleton-table-wrapper {
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 16px;
+  min-height: 200px;
+  background-color: #fff;
 }
 </style>
