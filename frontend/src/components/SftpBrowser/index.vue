@@ -87,6 +87,7 @@
 
           <el-table
             ref="multipleTable"
+            :row-class-name="tableRowClassName"
             @selection-change="handleSelectionChange"
             :data="filteredFileList"
             v-loading="isLoading"
@@ -108,8 +109,9 @@
                 </div>
                 <div
                   v-else
-                  @click="handleItemClick(row)"
-                  :class="{'dir-item': row.isDir, 'file-item': !row.isDir}"
+                  @click="handleRowFocus(row)"
+                  @dblclick="handleItemOpen(row)"
+                  :class="{'dir-item': row.isDir, 'file-item': !row.isDir, 'keyboard-focus-row': isFocusRow(row)}"
                 >
                   <i :class="row.isDir ? 'el-icon-folder' : 'el-icon-document'"></i>
                   {{ row.name }}
@@ -187,8 +189,11 @@
           </div>
           
           <div style="margin-top: 10px;margin-left: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: #909399;" v-if="selectedFiles.length > 0">{{ selectDescription }}</span>
-            <span style="color: #909399;" v-else>{{ description }}</span>
+            <div>
+              <span style="color: #909399;" v-if="selectedFiles.length > 0">{{ selectDescription }}</span>
+              <span style="color: #909399;" v-else>{{ description }}</span>
+              <span style="color: #C0C4CC; font-size: 12px; margin-left: 12px;">↑↓ 选择 · Enter/双击 打开 · Backspace 返回</span>
+            </div>
             <div>
               <el-button type="primary" size="mini" icon="el-icon-download" round @click="handleBatchDownload" :disabled="selectedFiles.length === 0">批量下载</el-button>
               <el-button type="danger" size="mini" icon="el-icon-delete" round @click="batchDeleteDialogVisible = true" :disabled="selectedFiles.length === 0">批量删除</el-button>
@@ -498,6 +503,10 @@ export default {
       deepSearchHasSearched: false,      // 是否已执行过搜索
       deepSearchDeleteDialogVisible: false, // 搜索删除确认弹框
       deepSearchDeleteTarget: { name: '', path: '', isDir: false }, // 搜索中待删除目标
+      // 键盘导航相关
+      focusIndex: -1, // 当前焦点行在 filteredFileList 中的索引，-1 表示无焦点
+      lastFocusName: '', // 待恢复焦点的行名称（进入子目录前记录）
+      pendingFocusName: '', // 列表加载后需恢复焦点的行名称（返回上级时用）
     }
   },
   mounted() {
@@ -546,6 +555,21 @@ export default {
           } else {
             this.filteredFileList = this.fileList
           }
+          // 恢复键盘焦点：优先 pendingFocusName（返回上级），其次 lastFocusName（进入子目录）
+          // 空目录时后端返回 files: null，需安全访问
+          const restoreName = this.pendingFocusName || this.lastFocusName
+          const list = this.filteredFileList || []
+          if (restoreName) {
+            const idx = list.findIndex(f => f.name === restoreName)
+            this.focusIndex = idx
+            if (idx >= 0) {
+              this.$nextTick(() => this.scrollToFocusRow())
+            }
+          } else {
+            this.focusIndex = -1
+          }
+          this.pendingFocusName = ''
+          this.lastFocusName = ''
         }
       } catch (e) {
         this.$message.error('获取文件列表失败')
@@ -566,10 +590,65 @@ export default {
         return [...acc, { name: cur, path }]
       }, [{ name: '根目录', path: '/' }])
     },
-    // 点击目录/文件
-    handleItemClick(item) {
-      if (item.isDir) this.fetchFiles(item.path)
-      this.selectedFiles = []
+    // 单击行：聚焦该行
+    handleRowFocus(row) {
+      this.focusIndex = (this.filteredFileList || []).indexOf(row)
+    },
+    // 打开某行（双击 / Enter 共用）：目录进入，文件触发下载
+    handleItemOpen(row) {
+      if (row.isDir) {
+        this.lastFocusName = row.name
+        this.pendingFocusName = ''
+        this.fetchFiles(row.path)
+      } else {
+        this.handleDownload(row)
+      }
+    },
+    // 判断某行是否为当前焦点行（按路径精确匹配，避免同名误判）
+    isFocusRow(row) {
+      const cur = (this.filteredFileList || [])[this.focusIndex]
+      return this.focusIndex >= 0 && !!cur && cur.path === row.path
+    },
+    // el-table 行样式回调：焦点行追加 class，用于滚动定位
+    tableRowClassName({ row }) {
+      return this.isFocusRow(row) ? 'keyboard-focus-row' : ''
+    },
+    // 上下移动焦点：delta 为 ±1，首次按下定位到首行/末行，边界处保持不变
+    moveFocus(delta) {
+      const len = (this.filteredFileList || []).length
+      if (len === 0) return
+      if (this.focusIndex < 0) {
+        this.focusIndex = delta > 0 ? 0 : len - 1
+      } else {
+        const next = this.focusIndex + delta
+        if (next < 0 || next >= len) return
+        this.focusIndex = next
+      }
+      this.scrollToFocusRow()
+    },
+    // 将焦点行滚动到表格可视区域
+    scrollToFocusRow() {
+      this.$nextTick(() => {
+        const table = this.$refs.multipleTable
+        if (!table || !table.$el) return
+        const row = table.$el.querySelector('tr.keyboard-focus-row')
+        const wrapper = table.$el.querySelector('.el-table__body-wrapper')
+        if (!row || !wrapper) return
+        const rowTop = row.offsetTop
+        const rowBottom = rowTop + row.offsetHeight
+        const viewTop = wrapper.scrollTop
+        const viewBottom = viewTop + wrapper.clientHeight
+        if (rowTop < viewTop) {
+          wrapper.scrollTop = rowTop
+        } else if (rowBottom > viewBottom) {
+          wrapper.scrollTop = rowBottom - wrapper.clientHeight
+        }
+      })
+    },
+    // Enter 处理：打开当前焦点行
+    handleFocusEnter() {
+      const row = (this.filteredFileList || [])[this.focusIndex]
+      if (row) this.handleItemOpen(row)
     },
     // 面包屑跳转
     handleBreadcrumbClick(item, index) {
@@ -577,13 +656,14 @@ export default {
       if ( this.path != '' && item.path === '/') return
       this.fetchFiles(item.path)
     },
-    // 返回上一级
+    // 返回上一级，返回成功返回 true
     goBack() {
-      if (this.currentPath === '/') return
-      if (this.currentPath === this.path) return
+      if (this.currentPath === '/') return false
+      if (this.currentPath === this.path) return false
       const paths = this.currentPath.split('/').filter(Boolean)
       paths.pop()
       this.fetchFiles(paths.length ? `/${paths.join('/')}` : '/')
+      return true
     },
     // 上传前检查
     beforeUpload(file) {
@@ -704,6 +784,10 @@ export default {
       this.deepSearchResults = []
       this.isSearching = false
       this.deepSearchHasSearched = false
+      // 重置键盘导航状态
+      this.focusIndex = -1
+      this.lastFocusName = ''
+      this.pendingFocusName = ''
       // 通知父组件关闭
       this.$emit('close')
     },
@@ -746,12 +830,13 @@ export default {
     },
     // 应用搜索过滤
     applyFilter() {
+      const source = this.originalFileList || []
       if (!this.searchQuery.trim()) {
-        this.filteredFileList = this.originalFileList
+        this.filteredFileList = source
         return
       }
       const query = this.searchQuery.toLowerCase()
-      this.filteredFileList = this.originalFileList.filter(item => 
+      this.filteredFileList = source.filter(item => 
         item.name.toLowerCase().includes(query)
       )
     },
@@ -849,9 +934,31 @@ export default {
         return
       }
       
-      // Backspace 返回上一级
+      // 子弹框打开时不参与键盘导航
+      const dialogOpen = this.showCreateFolderDialog || this.deleteDialogVisible ||
+        this.batchDeleteDialogVisible || this.showDeepSearchDialog || this.deepSearchDeleteDialogVisible
+
+      // 方向键上下移动焦点
+      if (!dialogOpen && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === 'ArrowUp' || e.keyCode === 38) {
+          e.preventDefault()
+          this.moveFocus(-1)
+          return
+        }
+        if (e.key === 'ArrowDown' || e.keyCode === 40) {
+          e.preventDefault()
+          this.moveFocus(1)
+          return
+        }
+      }
+
+      // Backspace 返回上一级，记住当前离开的目录名，返回后恢复焦点到该目录行
       if (e.keyCode === 8 || e.key === 'Backspace') {
-        this.goBack();
+        const segments = this.currentPath.split('/').filter(Boolean)
+        const leavingName = segments.length ? segments[segments.length - 1] : ''
+        if (this.goBack()) {
+          this.pendingFocusName = leavingName
+        }
         e.preventDefault(); // 阻止浏览器后退
       }
       // Delete 键触发批量删除
@@ -871,6 +978,10 @@ export default {
         }
         else if (this.deleteDialogVisible){
           this.confirmDelete()
+          e.preventDefault()
+        }
+        else if (!dialogOpen && this.focusIndex >= 0) {
+          this.handleFocusEnter()
           e.preventDefault()
         }
       }
@@ -1153,6 +1264,11 @@ export default {
 .drag-sub {
   font-size: 14px;
   opacity: 0.9;
+}
+
+/* 键盘导航焦点行高亮 */
+.el-table >>> tr.keyboard-focus-row > td {
+  background-color: #ecf5ff !important;
 }
 
 /* 搜索框样式 */
