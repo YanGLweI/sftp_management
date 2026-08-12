@@ -231,9 +231,9 @@
         <div v-show="queueDragOver" class="queue-drop-hint">
           <i class="el-icon-upload2"></i> 释放文件以加入传输队列
         </div>
-        <el-tabs v-model="queueTab">
+        <el-tabs v-model="queueTab" @tab-click="onQueueTabClick">
           <el-tab-pane :label="`列队的文件 (${transferQueue.length})`" name="queue">
-            <el-table :data="transferQueue" size="mini" border @row-contextmenu="openCtxMenu">
+            <el-table ref="queueTable" :data="transferQueue" size="mini" border @row-contextmenu="openCtxMenu">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="方向" width="70" align="center">
                 <template>--&gt;</template>
@@ -254,7 +254,7 @@
             <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
               <el-button size="mini" icon="el-icon-delete" :disabled="!failedTransfers.length" @click="clearFailed">清空记录</el-button>
             </div>
-            <el-table :data="failedTransfers" size="mini" border>
+            <el-table ref="failedTable" :data="failedTransfers" size="mini" border>
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="大小" width="100">
@@ -273,7 +273,7 @@
             <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
               <el-button size="mini" icon="el-icon-delete" :disabled="!successTransfers.length" @click="clearSuccess">清空记录</el-button>
             </div>
-            <el-table :data="successTransfers" size="mini" border>
+            <el-table ref="successTable" :data="successTransfers" size="mini" border>
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="大小" width="100">
@@ -1199,19 +1199,15 @@ export default {
           xhr.setRequestHeader(key, this.uploadHeaders[key])
         })
         xhr.onload = () => {
-          if (xhr.status === 200) {
-            try {
-              const res = JSON.parse(xhr.responseText)
-              if (res.code === 200) {
-                resolve()
-              } else {
-                reject(new Error(res.message || '上传失败'))
-              }
-            } catch (e) {
-              reject(e)
-            }
+          // 后端成功/失败均返回 {code, message}（含 HTTP 400/500），失败原因优先取响应 message
+          let res = null
+          try {
+            res = JSON.parse(xhr.responseText)
+          } catch (e) { /* 非 JSON 响应体 */ }
+          if (xhr.status === 200 && res && res.code === 200) {
+            resolve()
           } else {
-            reject(new Error(`HTTP ${xhr.status}`))
+            reject(new Error((res && res.message) || `上传失败（HTTP ${xhr.status}）`))
           }
         }
         xhr.onerror = () => {
@@ -1323,6 +1319,14 @@ export default {
     // 清空成功记录
     clearSuccess() {
       this.successTransfers = []
+    },
+    // 切换队列标签页：隐藏状态下挂载的表格列宽为 0，显示后需在绘制前主动重布局避免抖动
+    onQueueTabClick() {
+      this.$nextTick(() => {
+        const refMap = { queue: 'queueTable', failed: 'failedTable', success: 'successTable' }
+        const table = this.$refs[refMap[this.queueTab]]
+        if (table) table.doLayout()
+      })
     },
     // 打开队列右键菜单（鼠标位置，自动收敛在视口内防止溢出被裁）
     openCtxMenu(row, column, event) {

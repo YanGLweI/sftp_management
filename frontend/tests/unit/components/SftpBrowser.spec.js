@@ -321,6 +321,12 @@ class MockXHR {
   emitError() {
     if (this.onerror) this.onerror(new Error('network error'))
   }
+  // 测试辅助：模拟后端返回非 200 业务/HTTP 错误（响应体仍为 {code, message}）
+  emitHttpError(status = 400, body = { code: 400, message: '文件上传失败: 目标目录不存在' }) {
+    this.status = status
+    this.responseText = JSON.stringify(body)
+    this.onload()
+  }
 }
 MockXHR.instances = []
 
@@ -497,6 +503,39 @@ describe('SftpBrowser 传输队列', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.vm.ctxMenu.x).toBe(window.innerWidth - 120 - 4)
     expect(wrapper.vm.ctxMenu.y).toBe(window.innerHeight - 140 - 4)
+    wrapper.destroy()
+  })
+
+  it('失败原因取自响应 message（含 HTTP 400 场景）', async() => {
+    const { wrapper } = await createWrapper()
+    const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())
+    wrapper.vm.currentPath = '/q'
+    wrapper.vm.handleQueueDrop(makeDropEvent([makeSizedFile('msg.bin', 100)]))
+
+    wrapper.vm.uploadAll()
+    await flushPromises()
+    // HTTP 400 + JSON body：原因应为响应 message 而非 "HTTP 400"
+    MockXHR.instances[0].emitHttpError(400, { code: 400, message: '文件上传失败: 目标目录不存在' })
+    await flushPromises()
+    expect(wrapper.vm.failedTransfers[0].reason).toBe('文件上传失败: 目标目录不存在')
+
+    // HTTP 200 + 业务 code 非 200：同样取 message
+    wrapper.vm.retryFailed(wrapper.vm.failedTransfers[0])
+    await flushPromises()
+    MockXHR.instances[1].emitHttpError(200, { code: 500, message: 'SFTP连接失效: token expired' })
+    await flushPromises()
+    expect(wrapper.vm.failedTransfers[0].reason).toBe('SFTP连接失效: token expired')
+    fetchSpy.mockRestore()
+    wrapper.destroy()
+  })
+
+  it('切换标签页：显示后主动重布局当前表格避免抖动', async() => {
+    const { wrapper } = await createWrapper()
+    const spy = jest.spyOn(wrapper.vm.$refs.failedTable, 'doLayout')
+    wrapper.vm.queueTab = 'failed'
+    wrapper.vm.onQueueTabClick()
+    await wrapper.vm.$nextTick()
+    expect(spy).toHaveBeenCalled()
     wrapper.destroy()
   })
 
