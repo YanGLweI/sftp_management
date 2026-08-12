@@ -1059,10 +1059,11 @@ export default {
       // 串行上传，并更新整体进度
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
-        // 更新整体百分比（基于完成数量）
-        this.uploadPercent = Math.floor((i / files.length) * 100)
         try {
-          await this.uploadSingleFile(file)
+          await this.uploadSingleFile(file, (percent) => {
+            // 整体百分比 = 已完成文件 + 当前文件进度加权
+            this.uploadPercent = Math.floor(((i + percent / 100) / files.length) * 100)
+          })
           successCount++
         } catch (err) {
           console.error(err)
@@ -1085,11 +1086,12 @@ export default {
     },
 
     // 单文件上传（使用与 el-upload 相同的接口和参数）
-    uploadSingleFile(file) {
+    uploadSingleFile(file, onProgress) {
       return new Promise((resolve, reject) => {
         const formData = new FormData()
-        formData.append('file', file)
+        // path 必须先于 file 追加：后端流式接收需要在读到文件内容前就知道目标路径
         formData.append('path', this.currentPath)
+        formData.append('file', file)
 
         const xhr = new XMLHttpRequest()
         xhr.open('POST', this.uploadUrl, true)
@@ -1115,6 +1117,12 @@ export default {
         }
         xhr.onerror = () => {
           reject(new Error('网络错误'))
+        }
+        // 监听上传进度，实时回调百分比
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && onProgress) {
+            onProgress(Math.round((e.loaded / e.total) * 100))
+          }
         }
         xhr.send(formData)
       })

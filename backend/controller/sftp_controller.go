@@ -245,10 +245,13 @@ func GetFiles(c *gin.Context) {
 	})
 }
 
-// ! UploadFile 上传文件（适配Token）
+// ! UploadFile 上传文件（适配Token，流式直写SFTP，避免整体缓冲导致进度虚高）
 func UploadFile(c *gin.Context) {
-	// 1. 获取Token
-	token := getSFTPToken(c)
+	// 1. 获取Token（仅从 Header/Query 获取，避免解析请求体破坏流式读取）
+	token := c.GetHeader("X-SFTP-Token")
+	if token == "" {
+		token = c.Query("sftp_token")
+	}
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
@@ -267,17 +270,8 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	// 3. 执行上传操作
-	targetPath := c.PostForm("path")
-	if targetPath == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "目标路径不能为空",
-		})
-		return
-	}
-
-	file, err := c.FormFile("file")
+	// 3. 流式读取 multipart 请求体（不能用 FormFile/PostForm，否则会先把整个文件缓冲到本地）
+	mr, err := c.Request.MultipartReader()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
@@ -286,21 +280,72 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	srcFile, err := file.Open()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "无法打开上传的文件: " + err.Error(),
-		})
-		return
-	}
-	defer srcFile.Close()
+	var targetPath string
+	uploaded := false
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"code":    400,
+				"message": "文件上传失败: " + err.Error(),
+			})
+			return
+		}
 
-	dstPath := filepath.Join(targetPath, file.Filename)
-	if err := conn.CreateUploadFile(dstPath, srcFile); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "文件上传失败: " + err.Error(),
+		switch part.FormName() {
+		case "path":
+			data, err := io.ReadAll(part)
+			part.Close()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"code":    400,
+					"message": "读取目标路径失败: " + err.Error(),
+				})
+				return
+			}
+			targetPath = string(data)
+		case "file":
+			if targetPath == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"code":    400,
+					"message": "目标路径不能为空",
+				})
+				return
+			}
+			filename := part.FileName()
+			if filename == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"code":    400,
+					"message": "上传文件名为空",
+				})
+				return
+			}
+			dstPath := filepath.Join(targetPath, filename)
+			// 边接收边写入SFTP，SFTP写入速度通过TCP背压传导到浏览器，进度条反映真实进度
+			if err := conn.CreateUploadFile(dstPath, part); err != nil {
+				part.Close()
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"code":    500,
+					"message": "文件上传失败: " + err.Error(),
+				})
+				return
+			}
+			part.Close()
+			uploaded = true
+		default:
+			// 忽略其他字段，读完丢弃以保持 multipart 流推进
+			io.Copy(io.Discard, part)
+			part.Close()
+		}
+	}
+
+	if !uploaded {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "未接收到上传文件",
 		})
 		return
 	}

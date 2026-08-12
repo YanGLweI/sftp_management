@@ -2,8 +2,8 @@ package utils
 
 import (
 	"fmt"
+	"io"
 	"math/rand"
-	"mime/multipart"
 	"path/filepath"
 	"sftpbackend/config"
 	"sync"
@@ -188,8 +188,8 @@ func (conn *SFTPConnection) Close() error {
 	return err
 }
 
-// 创建上传文件
-func (conn *SFTPConnection) CreateUploadFile(dstPath string, srcFile multipart.File) error {
+// 创建上传文件（srcFile 支持任意 io.Reader，便于 multipart part 流式直写）
+func (conn *SFTPConnection) CreateUploadFile(dstPath string, srcFile io.Reader) error {
 	if conn == nil || conn.SftpClient == nil {
 		return fmt.Errorf("SFTP连接未初始化")
 	}

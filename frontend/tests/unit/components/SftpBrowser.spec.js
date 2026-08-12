@@ -289,3 +289,125 @@ describe('SftpBrowser 键盘与鼠标焦点导航', () => {
     wrapper.destroy()
   })
 })
+
+// 可控制进度的 XHR 替身，模拟真实上传过程中的 progress 事件
+class MockXHR {
+  constructor() {
+    this.upload = {}
+    this.headers = {}
+    MockXHR.instances.push(this)
+  }
+  open(method, url) {
+    this.method = method
+    this.url = url
+  }
+  setRequestHeader(key, value) {
+    this.headers[key] = value
+  }
+  send() {
+    this.sent = true
+  }
+  // 测试辅助：模拟上传进度事件
+  emitProgress(loaded, total) {
+    this.upload.onprogress({ lengthComputable: true, loaded, total })
+  }
+  // 测试辅助：模拟上传成功响应
+  emitSuccess(body = { code: 200 }) {
+    this.status = 200
+    this.responseText = JSON.stringify(body)
+    this.onload()
+  }
+}
+MockXHR.instances = []
+
+describe('SftpBrowser 拖拽上传进度条', () => {
+  let originalXHR
+  beforeEach(() => {
+    originalXHR = window.XMLHttpRequest
+    MockXHR.instances = []
+    window.XMLHttpRequest = MockXHR
+  })
+  afterEach(() => {
+    window.XMLHttpRequest = originalXHR
+  })
+
+  const makeDropEvent = files => ({
+    dataTransfer: { files },
+    preventDefault: () => {}
+  })
+  const makeFile = (name, size) => {
+    // jsdom 的 File 支持 size 参数
+    return new File([new Uint8Array(0)], name, { type: 'text/plain' })
+  }
+  const makeSizedFile = (name, size) => {
+    const f = makeFile(name)
+    Object.defineProperty(f, 'size', { value: size })
+    return f
+  }
+
+  it('单文件拖拽上传：进度随发送字节实时增长，完成后到 100%', async() => {
+    const { wrapper } = await createWrapper()
+    const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())
+    const file = makeSizedFile('big.bin', 1000)
+
+    const dropPromise = wrapper.vm.handleDrop(makeDropEvent([file]))
+    await flushPromises()
+
+    expect(MockXHR.instances.length).toBe(1)
+    const xhr = MockXHR.instances[0]
+    // 进度条已显示，初始 0%
+    expect(wrapper.vm.showUploadProgress).toBe(true)
+    expect(wrapper.vm.uploadPercent).toBe(0)
+
+    // 模拟分步上传：30% -> 60% -> 90%
+    xhr.emitProgress(300, 1000)
+    expect(wrapper.vm.uploadPercent).toBe(30)
+    xhr.emitProgress(600, 1000)
+    expect(wrapper.vm.uploadPercent).toBe(60)
+    xhr.emitProgress(900, 1000)
+    expect(wrapper.vm.uploadPercent).toBe(90)
+
+    // 上传完成
+    xhr.emitSuccess()
+    await dropPromise
+    await flushPromises()
+    expect(wrapper.vm.uploadPercent).toBe(100)
+    expect(wrapper.vm.isUploading).toBe(false)
+
+    // 1 秒后进度条隐藏并重置
+    jest.useRealTimers()
+    await new Promise(resolve => setTimeout(resolve, 1100))
+    expect(wrapper.vm.showUploadProgress).toBe(false)
+    expect(wrapper.vm.uploadPercent).toBe(0)
+    fetchSpy.mockRestore()
+    wrapper.destroy()
+  })
+
+  it('多文件拖拽上传：整体进度按已完成文件 + 当前文件进度加权推进', async() => {
+    const { wrapper } = await createWrapper()
+    const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())
+    const f1 = makeSizedFile('a.bin', 1000)
+    const f2 = makeSizedFile('b.bin', 1000)
+
+    const dropPromise = wrapper.vm.handleDrop(makeDropEvent([f1, f2]))
+    await flushPromises()
+
+    // 第 1 个文件上传到 50%：整体应为 (0 + 0.5) / 2 = 25%
+    const xhr1 = MockXHR.instances[0]
+    xhr1.emitProgress(500, 1000)
+    expect(wrapper.vm.uploadPercent).toBe(25)
+    xhr1.emitSuccess()
+    await flushPromises()
+
+    // 第 2 个文件上传到 50%：整体应为 (1 + 0.5) / 2 = 75%
+    const xhr2 = MockXHR.instances[1]
+    xhr2.emitProgress(500, 1000)
+    expect(wrapper.vm.uploadPercent).toBe(75)
+    xhr2.emitSuccess()
+
+    await dropPromise
+    expect(wrapper.vm.uploadPercent).toBe(100)
+    fetchSpy.mockRestore()
+    wrapper.destroy()
+  })
+})
