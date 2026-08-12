@@ -534,6 +534,13 @@ export default {
         // 关闭时重置拖拽状态
         this.dragOverlayVisible = false
       }
+      // 打开后释放外部残留焦点（如登录密码框），保证方向键立即可用
+      if (val) {
+        this.$nextTick(() => {
+          const el = document.activeElement
+          if (el && el !== document.body) el.blur()
+        })
+      }
     }
   },
   methods: {
@@ -613,16 +620,14 @@ export default {
     tableRowClassName({ row }) {
       return this.isFocusRow(row) ? 'keyboard-focus-row' : ''
     },
-    // 上下移动焦点：delta 为 ±1，首次按下定位到首行/末行，边界处保持不变
+    // 上下移动焦点：delta 为 ±1，首次按下定位到首行/末行，边界处循环（顶部按上到末尾，底部按下到开头）
     moveFocus(delta) {
       const len = (this.filteredFileList || []).length
       if (len === 0) return
       if (this.focusIndex < 0) {
         this.focusIndex = delta > 0 ? 0 : len - 1
       } else {
-        const next = this.focusIndex + delta
-        if (next < 0 || next >= len) return
-        this.focusIndex = next
+        this.focusIndex = (this.focusIndex + delta + len) % len
       }
       this.scrollToFocusRow()
     },
