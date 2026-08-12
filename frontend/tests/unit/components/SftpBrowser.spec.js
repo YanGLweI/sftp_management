@@ -317,6 +317,10 @@ class MockXHR {
     this.responseText = JSON.stringify(body)
     this.onload()
   }
+  // 测试辅助：模拟上传失败（如网络错误）
+  emitError() {
+    if (this.onerror) this.onerror(new Error('network error'))
+  }
 }
 MockXHR.instances = []
 
@@ -407,6 +411,250 @@ describe('SftpBrowser 拖拽上传进度条', () => {
 
     await dropPromise
     expect(wrapper.vm.uploadPercent).toBe(100)
+    fetchSpy.mockRestore()
+    wrapper.destroy()
+  })
+})
+
+describe('SftpBrowser 传输队列', () => {
+  let originalXHR
+  beforeEach(() => {
+    originalXHR = window.XMLHttpRequest
+    MockXHR.instances = []
+    window.XMLHttpRequest = MockXHR
+  })
+  afterEach(() => {
+    window.XMLHttpRequest = originalXHR
+  })
+
+  const makeDropEvent = files => ({
+    dataTransfer: { files },
+    preventDefault: () => {}
+  })
+  const makeSizedFile = (name, size) => {
+    const f = new File([new Uint8Array(0)], name, { type: 'text/plain' })
+    Object.defineProperty(f, 'size', { value: size })
+    return f
+  }
+
+  it('队列卡片 DOM 渲染：三个标签页、拖入提示条与右键菜单', async() => {
+    const { wrapper } = await createWrapper()
+    wrapper.vm.currentPath = '/q'
+
+    // 队列卡片存在，含三个标签页标题
+    const card = wrapper.find('.transfer-queue-card')
+    expect(card.exists()).toBe(true)
+    const tabText = card.text()
+    expect(tabText).toContain('列队的文件 (0)')
+    expect(tabText).toContain('传输失败 (0)')
+    expect(tabText).toContain('成功的传输 (0)')
+
+    // 拖入卡片时显示提示条并入队
+    wrapper.vm.queueDragOver = true
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.queue-drop-hint').text()).toContain('释放文件以加入传输队列')
+    wrapper.vm.handleQueueDrop(makeDropEvent([makeSizedFile('dom.bin', 100)]))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.queue-drop-hint').isVisible()).toBe(false)
+    expect(card.text()).toContain('列队的文件 (1)')
+    expect(card.text()).toContain('dom.bin')
+    expect(card.text()).toContain('/q/dom.bin')
+    expect(card.text()).toContain('待上传')
+
+    // 右键菜单：默认关闭；打开后挂载到 body（避免弹框 backdrop-filter 影响 fixed 定位）并显示四个菜单项
+    expect(wrapper.vm.ctxMenu.visible).toBe(false)
+    wrapper.vm.openCtxMenu(wrapper.vm.transferQueue[0], null, { preventDefault: () => {}, clientX: 10, clientY: 20 })
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+    const menuEl = document.querySelector('.ctx-menu')
+    expect(menuEl).toBeTruthy()
+    expect(menuEl.parentElement).toBe(document.body)
+    expect(menuEl.style.display).not.toBe('none')
+    expect(Array.from(menuEl.querySelectorAll('.ctx-menu-item')).map(el => el.textContent.trim())).toEqual(['全部上传', '选定上传', '选定移除', '全部移除'])
+    // 视口内不触发收敛，保持鼠标坐标
+    expect(wrapper.vm.ctxMenu.x).toBe(10)
+    expect(wrapper.vm.ctxMenu.y).toBe(20)
+    wrapper.vm.closeCtxMenu()
+    await wrapper.vm.$nextTick()
+    expect(menuEl.style.display).toBe('none')
+    wrapper.destroy()
+    // 组件销毁时清理 body 上的菜单节点
+    expect(document.querySelector('.ctx-menu')).toBe(null)
+  })
+
+  it('右键菜单：靠近视口右下边缘时自动收敛不被裁剪', async() => {
+    const { wrapper } = await createWrapper()
+    wrapper.vm.currentPath = '/q'
+    wrapper.vm.handleQueueDrop(makeDropEvent([makeSizedFile('clamp.bin', 100)]))
+
+    // openCtxMenu 同步挂载菜单到 body，随后 mock 尺寸（在 nextTick 测量前生效）
+    wrapper.vm.openCtxMenu(wrapper.vm.transferQueue[0], null, { preventDefault: () => {}, clientX: window.innerWidth - 10, clientY: window.innerHeight - 10 })
+    const menuEl = document.querySelector('.ctx-menu')
+    expect(menuEl).toBeTruthy()
+    // jsdom 无布局，mock 菜单实际尺寸
+    jest.spyOn(menuEl, 'getBoundingClientRect').mockReturnValue({ width: 120, height: 140, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 })
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.ctxMenu.x).toBe(window.innerWidth - 120 - 4)
+    expect(wrapper.vm.ctxMenu.y).toBe(window.innerHeight - 140 - 4)
+    wrapper.destroy()
+  })
+
+  it('原生拖放事件：在卡片 DOM 上 drop/dragover 能触发入队与高亮', async() => {
+    const { wrapper } = await createWrapper()
+    wrapper.vm.currentPath = '/nat'
+    const card = wrapper.find('.transfer-queue-card')
+    expect(card.exists()).toBe(true)
+
+    // 原生 dragover：触发高亮（验证事件确实绑定到了 DOM）
+    const overEvt = new Event('dragover', { bubbles: true, cancelable: true })
+    card.element.dispatchEvent(overEvt)
+    await wrapper.vm.$nextTick()
+    expect(overEvt.defaultPrevented).toBe(true)
+    expect(wrapper.vm.queueDragOver).toBe(true)
+
+    // 原生 drop：入队
+    const file = makeSizedFile('native.bin', 100)
+    const dropEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropEvt, 'dataTransfer', { value: { files: [file] }})
+    card.element.dispatchEvent(dropEvt)
+    await wrapper.vm.$nextTick()
+    expect(dropEvt.defaultPrevented).toBe(true)
+    expect(wrapper.vm.queueDragOver).toBe(false)
+    expect(wrapper.vm.transferQueue.length).toBe(1)
+    expect(wrapper.vm.transferQueue[0].name).toBe('native.bin')
+    expect(wrapper.vm.transferQueue[0].remotePath).toBe('/nat/native.bin')
+    expect(MockXHR.instances.length).toBe(0)
+    wrapper.destroy()
+  })
+
+  it('拖入队列卡片：记为待上传，远程路径为当前目录+文件名，不发起请求', async() => {
+    const { wrapper } = await createWrapper()
+    wrapper.vm.currentPath = '/data/input'
+    wrapper.vm.queueTab = 'success'
+
+    wrapper.vm.handleQueueDrop(makeDropEvent([makeSizedFile('a.bin', 100), makeSizedFile('b.bin', 200)]))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.transferQueue.length).toBe(2)
+    expect(wrapper.vm.transferQueue[0].status).toBe('pending')
+    expect(wrapper.vm.transferQueue[0].name).toBe('a.bin')
+    expect(wrapper.vm.transferQueue[0].remotePath).toBe('/data/input/a.bin')
+    expect(wrapper.vm.transferQueue[1].remotePath).toBe('/data/input/b.bin')
+    expect(wrapper.vm.queueTab).toBe('queue')
+    // 仅入队，不发起上传请求
+    expect(MockXHR.instances.length).toBe(0)
+    wrapper.destroy()
+  })
+
+  it('全部上传：最多 3 路并发，完成 1 个自动补位，进度独立且成功/失败分别记录', async() => {
+    const { wrapper } = await createWrapper()
+    const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())
+    wrapper.vm.currentPath = '/q'
+    const files = ['f1', 'f2', 'f3', 'f4', 'f5'].map(n => makeSizedFile(n + '.bin', 1000))
+    wrapper.vm.handleQueueDrop(makeDropEvent(files))
+
+    wrapper.vm.uploadAll()
+    await flushPromises()
+    // 5 个入队，仅发起 3 个
+    expect(MockXHR.instances.length).toBe(3)
+    expect(wrapper.vm.uploadingCount).toBe(3)
+
+    // 各条目进度独立更新
+    MockXHR.instances[0].emitProgress(300, 1000)
+    MockXHR.instances[1].emitProgress(600, 1000)
+    expect(wrapper.vm.transferQueue.find(i => i.name === 'f1.bin').percent).toBe(30)
+    expect(wrapper.vm.transferQueue.find(i => i.name === 'f2.bin').percent).toBe(60)
+
+    // 第 1 个成功：进入成功记录，自动补位发起第 4 个
+    MockXHR.instances[0].emitSuccess()
+    await flushPromises()
+    expect(MockXHR.instances.length).toBe(4)
+    expect(wrapper.vm.successTransfers.length).toBe(1)
+    expect(wrapper.vm.successTransfers[0].name).toBe('f1.bin')
+    expect(wrapper.vm.transferQueue.length).toBe(4)
+
+    // 第 2 个失败：进入失败记录并带原因，自动补位发起第 5 个
+    MockXHR.instances[1].emitError()
+    await flushPromises()
+    expect(MockXHR.instances.length).toBe(5)
+    expect(wrapper.vm.failedTransfers.length).toBe(1)
+    expect(wrapper.vm.failedTransfers[0].name).toBe('f2.bin')
+    expect(wrapper.vm.failedTransfers[0].reason).toBeTruthy()
+
+    // 完成剩余 3 个
+    MockXHR.instances[2].emitSuccess()
+    MockXHR.instances[3].emitSuccess()
+    MockXHR.instances[4].emitSuccess()
+    await flushPromises()
+    expect(wrapper.vm.transferQueue.length).toBe(0)
+    expect(wrapper.vm.successTransfers.length).toBe(4)
+    expect(wrapper.vm.uploadingCount).toBe(0)
+    // 队列清空后刷新文件列表
+    expect(fetchSpy).toHaveBeenCalled()
+    fetchSpy.mockRestore()
+    wrapper.destroy()
+  })
+
+  it('右键动作：选定移除 / 全部移除仅作用于待上传条目', async() => {
+    const { wrapper } = await createWrapper()
+    const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())
+    wrapper.vm.currentPath = '/q'
+    // 5 个文件，3 路并发：r1~r3 上传中，r4/r5 排队
+    const files = ['r1', 'r2', 'r3', 'r4', 'r5'].map(n => makeSizedFile(n + '.bin', 100))
+    wrapper.vm.handleQueueDrop(makeDropEvent(files))
+
+    wrapper.vm.pumpUploads()
+    await flushPromises()
+    expect(MockXHR.instances.length).toBe(3)
+    const uploading = wrapper.vm.transferQueue.find(i => i.name === 'r1.bin')
+    expect(uploading.status).toBe('uploading')
+
+    // 选定移除：移除排队的 r5，不影响上传中的条目
+    wrapper.vm.removeOne(wrapper.vm.transferQueue.find(i => i.name === 'r5.bin'))
+    expect(wrapper.vm.transferQueue.map(i => i.name)).toEqual(['r1.bin', 'r2.bin', 'r3.bin', 'r4.bin'])
+    // 对上传中条目无效
+    wrapper.vm.removeOne(uploading)
+    expect(wrapper.vm.transferQueue.length).toBe(4)
+
+    // 全部移除：仅移除排队的 r4，上传中的 r1~r3 继续跑完
+    wrapper.vm.removeAllPending()
+    expect(wrapper.vm.transferQueue.map(i => i.name)).toEqual(['r1.bin', 'r2.bin', 'r3.bin'])
+    MockXHR.instances[0].emitSuccess()
+    MockXHR.instances[1].emitSuccess()
+    MockXHR.instances[2].emitSuccess()
+    await flushPromises()
+    expect(wrapper.vm.transferQueue.length).toBe(0)
+    expect(wrapper.vm.successTransfers.length).toBe(3)
+    fetchSpy.mockRestore()
+    wrapper.destroy()
+  })
+
+  it('失败重试：复用原文件重新入队并可上传成功', async() => {
+    const { wrapper } = await createWrapper()
+    const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())
+    wrapper.vm.currentPath = '/q'
+    const file = makeSizedFile('retry.bin', 1000)
+    wrapper.vm.handleQueueDrop(makeDropEvent([file]))
+
+    wrapper.vm.uploadAll()
+    await flushPromises()
+    MockXHR.instances[0].emitError()
+    await flushPromises()
+    expect(wrapper.vm.failedTransfers.length).toBe(1)
+
+    // 重试：从失败记录移除，重新入队并自动启动
+    const failed = wrapper.vm.failedTransfers[0]
+    wrapper.vm.retryFailed(failed)
+    await flushPromises()
+    expect(wrapper.vm.failedTransfers.length).toBe(0)
+    expect(MockXHR.instances.length).toBe(2)
+    expect(wrapper.vm.transferQueue[0].file).toBe(file)
+
+    MockXHR.instances[1].emitSuccess()
+    await flushPromises()
+    expect(wrapper.vm.transferQueue.length).toBe(0)
+    expect(wrapper.vm.successTransfers.map(i => i.name)).toEqual(['retry.bin'])
     fetchSpy.mockRestore()
     wrapper.destroy()
   })

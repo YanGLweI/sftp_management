@@ -5,6 +5,7 @@
     center
     width="70%"
     top="5vh"
+    custom-class="sftp-browser-dialog"
     :close-on-click-modal="false"
     @close="handleClose"
   >
@@ -216,6 +217,87 @@
           </div>
         </div>
       </el-card>
+
+      <!-- 传输队列卡片：独立拖放区，只有拖入本卡片的文件才进入队列 -->
+      <el-card
+        shadow="hover"
+        class="transfer-queue-card"
+        :class="{ 'queue-drag-over': queueDragOver }"
+        @dragover.native.prevent="queueDragOver = true"
+        @dragenter.native.prevent="queueDragOver = true"
+        @dragleave.native="onQueueDragLeave"
+        @drop.native.prevent="handleQueueDrop"
+      >
+        <div v-show="queueDragOver" class="queue-drop-hint">
+          <i class="el-icon-upload2"></i> 释放文件以加入传输队列
+        </div>
+        <el-tabs v-model="queueTab">
+          <el-tab-pane :label="`列队的文件 (${transferQueue.length})`" name="queue">
+            <el-table :data="transferQueue" size="mini" border @row-contextmenu="openCtxMenu">
+              <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
+              <el-table-column label="方向" width="70" align="center">
+                <template>--&gt;</template>
+              </el-table-column>
+              <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
+              <el-table-column label="大小" width="100">
+                <template slot-scope="{row}">{{ formatSize(row.size) }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="160">
+                <template slot-scope="{row}">
+                  <span v-if="row.status === 'pending'" style="color:#909399;">待上传</span>
+                  <el-progress v-else :percentage="row.percent" style="width:120px;display:inline-block;"></el-progress>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+          <el-tab-pane :label="`传输失败 (${failedTransfers.length})`" name="failed">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+              <el-button size="mini" icon="el-icon-delete" :disabled="!failedTransfers.length" @click="clearFailed">清空记录</el-button>
+            </div>
+            <el-table :data="failedTransfers" size="mini" border>
+              <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
+              <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
+              <el-table-column label="大小" width="100">
+                <template slot-scope="{row}">{{ formatSize(row.size) }}</template>
+              </el-table-column>
+              <el-table-column prop="reason" label="失败原因" show-overflow-tooltip></el-table-column>
+              <el-table-column prop="time" label="时间" width="160"></el-table-column>
+              <el-table-column label="操作" width="80" align="center">
+                <template slot-scope="{row}">
+                  <el-button size="mini" type="primary" @click="retryFailed(row)">重试</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+          <el-tab-pane :label="`成功的传输 (${successTransfers.length})`" name="success">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+              <el-button size="mini" icon="el-icon-delete" :disabled="!successTransfers.length" @click="clearSuccess">清空记录</el-button>
+            </div>
+            <el-table :data="successTransfers" size="mini" border>
+              <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
+              <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
+              <el-table-column label="大小" width="100">
+                <template slot-scope="{row}">{{ formatSize(row.size) }}</template>
+              </el-table-column>
+              <el-table-column prop="time" label="时间" width="160"></el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
+      </el-card>
+
+      <!-- 队列条目右键菜单（mounted 时移至 body：全局 .el-dialog 的 backdrop-filter 会为 fixed 后代创建包含块导致定位偏移） -->
+      <div
+        v-show="ctxMenu.visible"
+        ref="ctxMenu"
+        class="ctx-menu"
+        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+        @click.stop
+      >
+        <div class="ctx-menu-item" @click="uploadAll">全部上传</div>
+        <div class="ctx-menu-item" @click="uploadOne(ctxMenu.row)">选定上传</div>
+        <div class="ctx-menu-item" @click="removeOne(ctxMenu.row)">选定移除</div>
+        <div class="ctx-menu-item" @click="removeAllPending">全部移除</div>
+      </div>
     </div>
 
     <!-- 新建文件夹 -->
@@ -486,6 +568,15 @@ export default {
       // 拖拽上传相关
       dragOverlayVisible: false,      // 遮罩层显隐
       isUploading: false,              // 防止重复上传
+      // 传输队列相关
+      transferQueue: [],      // 待上传/上传中条目 {id,file,name,size,remotePath,status,percent}
+      failedTransfers: [],    // 传输失败记录（带原因，保留 file 供重试）
+      successTransfers: [],   // 成功传输记录
+      queueTab: 'queue',      // 队列卡片当前标签页 queue/failed/success
+      uploadingCount: 0,      // 当前并发上传数（上限 3）
+      queueDragOver: false,   // 拖入队列卡片高亮
+      ctxMenu: { visible: false, x: 0, y: 0, row: null }, // 队列右键菜单
+      queueIdSeq: 0,          // 队列条目 id 序号
       // 描述
       description: '', // 当前目录描述
       selectDescription: '', // 选中的文件描述
@@ -516,11 +607,19 @@ export default {
     window.addEventListener('dragenter', this.onWindowDragEnter)
     // 拖拽结束（释放或取消）隐藏遮罩层
     window.addEventListener('dragend', this.onDragEnd)
+    // 点击其他区域关闭队列右键菜单
+    document.addEventListener('click', this.closeCtxMenu)
+    // 右键菜单挂载到 body，避免弹框祖先的 backdrop-filter 影响 fixed 定位
+    if (this.$refs.ctxMenu) document.body.appendChild(this.$refs.ctxMenu)
   },
   beforeDestroy() {
     window.removeEventListener('keydown', this.handleKey)
     window.removeEventListener('dragenter', this.onWindowDragEnter)
     window.removeEventListener('dragend', this.onDragEnd)
+    document.removeEventListener('click', this.closeCtxMenu)
+    // 清理挂载到 body 的右键菜单节点
+    const menuEl = this.$refs.ctxMenu
+    if (menuEl && menuEl.parentNode) menuEl.parentNode.removeChild(menuEl)
   },
   watch: {
     // sftp浏览器显示时，获取文件列表
@@ -1127,6 +1226,126 @@ export default {
         xhr.send(formData)
       })
     },
+    // ===== 传输队列相关 =====
+    // 离开队列卡片边界时取消高亮
+    onQueueDragLeave(e) {
+      const card = e.currentTarget
+      if (card && card.contains(e.relatedTarget)) return
+      this.queueDragOver = false
+    },
+    // 拖入队列卡片：仅记为待上传，不直接上传
+    handleQueueDrop(e) {
+      this.queueDragOver = false
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length === 0) return
+      // 文件大小预检（不能超过5GB）
+      const invalidFile = files.find(f => f.size / 1024 / 1024 >= 1024 * 5)
+      if (invalidFile) {
+        this.$message.error(`文件 ${invalidFile.name} 超过 5GB，无法加入传输队列`)
+        return
+      }
+      files.forEach(file => {
+        this.transferQueue.push({
+          id: ++this.queueIdSeq,
+          file,
+          name: file.name,
+          size: file.size,
+          remotePath: (this.currentPath === '/' ? '/' : this.currentPath + '/') + file.name,
+          status: 'pending',
+          percent: 0
+        })
+      })
+      this.queueTab = 'queue'
+    },
+    // 并发调度：最多 3 路并发，其余排队；完成后自动补位
+    pumpUploads() {
+      while (this.uploadingCount < 3) {
+        const entry = this.transferQueue.find(item => item.status === 'pending')
+        if (!entry) break
+        entry.status = 'uploading'
+        this.uploadingCount++
+        this.uploadSingleFile(entry.file, p => { entry.percent = p }).then(() => {
+          this.transferQueue = this.transferQueue.filter(item => item.id !== entry.id)
+          this.successTransfers.push({ id: entry.id, name: entry.name, size: entry.size, remotePath: entry.remotePath, time: this.nowStr() })
+        }).catch(err => {
+          console.error(err)
+          this.transferQueue = this.transferQueue.filter(item => item.id !== entry.id)
+          this.failedTransfers.push({ id: entry.id, file: entry.file, name: entry.name, size: entry.size, remotePath: entry.remotePath, reason: err.message || '上传失败', time: this.nowStr() })
+        }).finally(() => {
+          this.uploadingCount--
+          this.pumpUploads()
+          // 队列已无进行中/待上传条目时刷新文件列表
+          if (!this.transferQueue.length) this.fetchFiles()
+        })
+      }
+    },
+    // 当前时间字符串（传输记录展示用）
+    nowStr() {
+      const d = new Date()
+      return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`
+    },
+    // 右键菜单：全部上传
+    uploadAll() {
+      this.closeCtxMenu()
+      this.pumpUploads()
+    },
+    // 右键菜单：选定上传（移到队首，仍受并发限制）
+    uploadOne(row) {
+      this.closeCtxMenu()
+      if (!row || row.status !== 'pending') return
+      this.transferQueue = [row, ...this.transferQueue.filter(item => item.id !== row.id)]
+      this.pumpUploads()
+    },
+    // 右键菜单：选定移除（仅移除待上传条目；按 id 判断，避免捕获的旧引用状态过期）
+    removeOne(row) {
+      this.closeCtxMenu()
+      if (!row) return
+      const current = this.transferQueue.find(item => item.id === row.id)
+      if (!current || current.status !== 'pending') return
+      this.transferQueue = this.transferQueue.filter(item => item.id !== row.id)
+    },
+    // 右键菜单：全部移除待上传条目（上传中的继续跑完）
+    removeAllPending() {
+      this.closeCtxMenu()
+      this.transferQueue = this.transferQueue.filter(item => item.status !== 'pending')
+    },
+    // 失败记录重试：重新入队并启动调度
+    retryFailed(row) {
+      this.failedTransfers = this.failedTransfers.filter(item => item.id !== row.id)
+      this.transferQueue.push({ id: ++this.queueIdSeq, file: row.file, name: row.name, size: row.size, remotePath: row.remotePath, status: 'pending', percent: 0 })
+      this.queueTab = 'queue'
+      this.pumpUploads()
+    },
+    // 清空失败记录
+    clearFailed() {
+      this.failedTransfers = []
+    },
+    // 清空成功记录
+    clearSuccess() {
+      this.successTransfers = []
+    },
+    // 打开队列右键菜单（鼠标位置，自动收敛在视口内防止溢出被裁）
+    openCtxMenu(row, column, event) {
+      event.preventDefault()
+      // el-dialog 内容懒渲染，mounted 时节点可能不存在，故在打开时确保挂载到 body
+      const menuEl = this.$refs.ctxMenu
+      if (menuEl && menuEl.parentNode !== document.body) document.body.appendChild(menuEl)
+      this.ctxMenu = { visible: true, x: event.clientX, y: event.clientY, row }
+      this.$nextTick(() => {
+        const el = this.$refs.ctxMenu
+        if (!el || !this.ctxMenu.visible) return
+        const rect = el.getBoundingClientRect()
+        let { x, y } = this.ctxMenu
+        if (x + rect.width > window.innerWidth) x = Math.max(4, window.innerWidth - rect.width - 4)
+        if (y + rect.height > window.innerHeight) y = Math.max(4, window.innerHeight - rect.height - 4)
+        this.ctxMenu.x = x
+        this.ctxMenu.y = y
+      })
+    },
+    // 关闭队列右键菜单
+    closeCtxMenu() {
+      this.ctxMenu.visible = false
+    },
     onTableDragLeave(e){
       // 如果 relatedTarget 仍然在容器内，说明只是离开了某个子元素，不隐藏
       if (this.$refs.tableContainer && this.$refs.tableContainer.contains(e.relatedTarget)) {
@@ -1311,4 +1530,38 @@ export default {
   min-height: 200px;
   background-color: #fff;
 }
+
+/* 传输队列卡片 */
+.transfer-queue-card { margin-top: 12px; }
+.transfer-queue-card.queue-drag-over { border: 2px dashed #409EFF; }
+.queue-drop-hint {
+  padding: 8px 0;
+  margin-bottom: 8px;
+  text-align: center;
+  color: #409EFF;
+  background: #ecf5ff;
+  border-radius: 4px;
+}
+
+/* 队列右键菜单 */
+.ctx-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0,0,0,.1);
+  padding: 4px 0;
+}
+.ctx-menu-item {
+  padding: 6px 16px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #606266;
+}
+.ctx-menu-item:hover { background: #ecf5ff; color: #409EFF; }
+
+/* 弹框底部外边距 50px，避免贴住浏览器底部（全局 element-ui.scss 将 .el-dialog 默认 50px 底边距覆盖为 0） */
+::v-deep .sftp-browser-dialog { margin-bottom: 50px; }
 </style>
