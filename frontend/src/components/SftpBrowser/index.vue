@@ -1,17 +1,19 @@
 <template>
   <el-dialog
-    :title="`SFTP浏览器 - ${username}`"
+    :title="`SFTP 浏览器 - ${username}`"
     :visible.sync="innerVisible"
     center
-    width="70%"
+    width="95vw"
     top="5vh"
     custom-class="sftp-browser-dialog"
     :close-on-click-modal="false"
     @close="handleClose"
   >
-    <div class="sftp-browser">
-      <!-- 面包屑导航 -->
-      <el-breadcrumb separator-class="el-icon-arrow-right">
+    <div class="split-view-layout">
+      <!-- ===== 左侧面板 ===== -->
+      <div class="left-panel" :style="{ width: `${leftWidth}px` }">
+        <!-- 面包屑导航 -->
+        <el-breadcrumb separator-class="el-icon-arrow-right" style=" margin-top: 5px; margin-left: 20px;">
         <el-breadcrumb-item
           v-for="(item, index) in breadcrumb"
           :key="index"
@@ -24,11 +26,11 @@
       </el-breadcrumb>
 
       <!-- 操作按钮 -->
-      <div class="operate">
+      <div class="operate" style="margin-left: 20px; margin-right: 20px;">
         <el-page-header
           @back="goBack"
           :content="breadcrumb[breadcrumb.length - 1].name"
-          style="margin:20px 0;width: 300px;"
+          style="width: 300px;"
           class="goBack"
         >
         </el-page-header>
@@ -78,12 +80,11 @@
         </div>
       </div>
       <!-- 文件列表 -->
-      <el-card shadow="hover">
-        <div class="table-container" ref="tableContainer" @dragleave.prevent="onTableDragLeave">
+      <el-card shadow="hover" class="file-list-card">
+        <div class="table-container" ref="tableContainer" @dragleave.prevent="onTableDragLeave" style="flex:1;overflow:hidden;">
           <el-empty
             description="这个目录很穷，什么都没有_(:3 ∠)_"
             v-if="!fileList"
-            style="height: calc(100vh - 400px);"
           ></el-empty>
 
           <el-table
@@ -92,7 +93,10 @@
             @selection-change="handleSelectionChange"
             :data="filteredFileList"
             v-loading="isLoading"
-            :height="searchQuery ? 'calc(100vh - 440px)' : 'calc(100vh - 400px)'"
+            :height="computeTableHeight()"
+            size="small"
+            :cell-style="{ padding: '8px 0' }"
+            :header-cell-style="{ height: '36px', fontSize: '13px' }"
             border
             v-if="fileList"
           >
@@ -189,7 +193,7 @@
             </div>
           </div>
           
-          <div style="margin-top: 10px;margin-left: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="margin-top: 8px;margin-left: 10px; display: flex; justify-content: space-between; align-items: center;" class="batch-actions">
             <div>
               <span style="color: #909399;" v-if="selectedFiles.length > 0">{{ selectDescription }}</span>
               <span style="color: #909399;" v-else>{{ description }}</span>
@@ -212,14 +216,20 @@
             <div class="drag-overlay-content">
               <i class="el-icon-upload2"></i>
               <span>释放文件以上传</span>
-              <span class="drag-sub">支持多文件，最大5GB/文件</span>
+              <span class="drag-sub">支持多文件，最大 5GB/文件</span>
             </div>
           </div>
         </div>
       </el-card>
+    </div>
 
-      <!-- 传输队列卡片：独立拖放区，只有拖入本卡片的文件才进入队列 -->
-      <el-card
+    <!-- 拖拽分隔线 (必须保持在 .split-view-layout 内部!) -->
+    <div class="vertical-splitter" v-if="rightWidth > 0" @mousedown.prevent="onSplitterMouseDown"></div>
+
+    <!-- ===== 右侧面板（传输队列）===== -->
+    <div class="right-panel" :style="{ width: `${rightWidth}px`, display: rightWidth > 0 ? 'block' : 'none' }">
+    <!-- 传输队列卡片：独立拖放区，只有拖入本卡片的文件才进入队列 -->
+    <el-card
         shadow="hover"
         class="transfer-queue-card"
         :class="{ 'queue-drag-over': queueDragOver }"
@@ -233,7 +243,7 @@
         </div>
         <el-tabs v-model="queueTab" @tab-click="onQueueTabClick">
           <el-tab-pane :label="`列队的文件 (${transferQueue.length})`" name="queue">
-            <el-table ref="queueTable" :data="transferQueue" size="mini" border @row-contextmenu="openCtxMenu">
+            <el-table ref="queueTable" :data="transferQueue" size="mini" border @row-contextmenu="openCtxMenu" :max-height="queueTableMaxHeight">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="方向" width="70" align="center">
                 <template>--&gt;</template>
@@ -254,7 +264,7 @@
             <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
               <el-button size="mini" icon="el-icon-delete" :disabled="!failedTransfers.length" @click="clearFailed">清空记录</el-button>
             </div>
-            <el-table ref="failedTable" :data="failedTransfers" size="mini" border>
+            <el-table ref="failedTable" :data="failedTransfers" size="mini" border :max-height="queueTableMaxHeightCompact">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="大小" width="100">
@@ -273,7 +283,7 @@
             <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
               <el-button size="mini" icon="el-icon-delete" :disabled="!successTransfers.length" @click="clearSuccess">清空记录</el-button>
             </div>
-            <el-table ref="successTable" :data="successTransfers" size="mini" border>
+            <el-table ref="successTable" :data="successTransfers" size="mini" border :max-height="queueTableMaxHeightCompact">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="大小" width="100">
@@ -284,6 +294,8 @@
           </el-tab-pane>
         </el-tabs>
       </el-card>
+    </div>
+  </div>
 
       <!-- 队列条目右键菜单（mounted 时移至 body：全局 .el-dialog 的 backdrop-filter 会为 fixed 后代创建包含块导致定位偏移） -->
       <div
@@ -298,7 +310,6 @@
         <div class="ctx-menu-item" @click="removeOne(ctxMenu.row)">选定移除</div>
         <div class="ctx-menu-item" @click="removeAllPending">全部移除</div>
       </div>
-    </div>
 
     <!-- 新建文件夹 -->
     <el-dialog
@@ -598,6 +609,15 @@ export default {
       focusIndex: -1, // 当前焦点行在 filteredFileList 中的索引，-1 表示无焦点
       lastFocusName: '', // 待恢复焦点的行名称（进入子目录前记录）
       pendingFocusName: '', // 列表加载后需恢复焦点的行名称（返回上级时用）
+      // 拖拽布局相关
+      leftWidth: 0,
+      rightWidth: 0,
+      isDragging: false,
+      minPanelWidth: 200,
+      // 队列表格最大高度（随窗口动态计算）
+      queueTableMaxHeight: 450,
+      // 带清空按钮标签页的表格最大高度（减去按钮高度）
+      queueTableMaxHeightCompact: 410,
     }
   },
   mounted() {
@@ -611,6 +631,14 @@ export default {
     document.addEventListener('click', this.closeCtxMenu)
     // 右键菜单挂载到 body，避免弹框祖先的 backdrop-filter 影响 fixed 定位
     if (this.$refs.ctxMenu) document.body.appendChild(this.$refs.ctxMenu)
+    
+    // 初始化布局
+    this.$nextTick(() => {
+      console.log('initLayout called in $nextTick')
+      this.initLayout()
+      // 监听窗口 resize
+      window.addEventListener('resize', this.handleResize)
+    })
   },
   beforeDestroy() {
     window.removeEventListener('keydown', this.handleKey)
@@ -620,6 +648,9 @@ export default {
     // 清理挂载到 body 的右键菜单节点
     const menuEl = this.$refs.ctxMenu
     if (menuEl && menuEl.parentNode) menuEl.parentNode.removeChild(menuEl)
+    
+    // 移除窗口 resize 监听
+    window.removeEventListener('resize', this.handleResize)
   },
   watch: {
     // sftp浏览器显示时，获取文件列表
@@ -643,6 +674,132 @@ export default {
     }
   },
   methods: {
+    // 初始化布局宽度
+    initLayout() {
+      const dialogWidth = window.innerWidth * 0.95
+      const splitterWidth = 4  // 分隔线宽度
+      
+      console.log('initLayout called, window.innerWidth:', window.innerWidth)
+      
+      // 响应式：如果宽度小于 1000px，使用单列布局
+      if (window.innerWidth < 1000) {
+        this.leftWidth = dialogWidth
+        this.rightWidth = 0
+        console.log('Single column layout, rightWidth=0')
+      } else {
+        // 分配比例：左侧 65%，右侧 35%
+        const leftRatio = 0.55
+        this.leftWidth = Math.floor(dialogWidth * leftRatio)
+        this.rightWidth = dialogWidth - this.leftWidth - splitterWidth
+        console.log(`Two column layout: leftWidth=${this.leftWidth}, rightWidth=${this.rightWidth}`)
+      }
+      
+      // 动态计算队列表格最大高度
+      // split-view-layout 高度 = 90vh - 80px
+      // 减去: el-card body padding(24px) + tabs header(44px) + 表格预留边距(30px)
+      this.queueTableMaxHeight = Math.floor(window.innerHeight * 0.9 - 80 - 24 - 44 - 30)
+      // 带清空记录按钮的标签页: 再减去按钮高度(32px) + 按钮下方边距(8px)
+      this.queueTableMaxHeightCompact = this.queueTableMaxHeight - 40
+      console.log(`Queue table max height: ${this.queueTableMaxHeight}px, compact: ${this.queueTableMaxHeightCompact}px`)
+    },
+
+    // 处理窗口 resize
+    handleResize() {
+      this.$nextTick(() => {
+        const dialogWidth = window.innerWidth * 0.95
+        const splitterWidth = 4
+        
+        if (window.innerWidth < 1000) {
+          this.leftWidth = dialogWidth * 0.95
+          this.rightWidth = 0
+        } else {
+          const leftRatio = 0.65
+          this.leftWidth = Math.floor(dialogWidth * leftRatio)
+          this.rightWidth = dialogWidth - this.leftWidth - splitterWidth
+        }
+        console.log(`handleResize: leftWidth=${this.leftWidth}, rightWidth=${this.rightWidth}`)
+        
+        // 重新计算队列表格最大高度
+        this.queueTableMaxHeight = Math.floor(window.innerHeight * 0.9 - 80 - 24 - 44 - 30)
+        // 带清空记录按钮的标签页: 再减去按钮高度(32px) + 按钮下方边距(8px)
+        this.queueTableMaxHeightCompact = this.queueTableMaxHeight - 40
+        console.log(`Queue table max height: ${this.queueTableMaxHeight}px, compact: ${this.queueTableMaxHeightCompact}px`)
+        
+        // 重新布局队列表格（高度变化后需要刷新）
+        const refMap = { queue: 'queueTable', failed: 'failedTable', success: 'successTable' }
+        const table = this.$refs[refMap[this.queueTab]]
+        if (table && typeof table.doLayout === 'function') table.doLayout()
+      })
+    },
+
+    // 开始拖拽
+    initDrag(e) {
+      if (this.isDragging) return
+      e.preventDefault()
+      e.stopPropagation()
+      
+      console.log('🖱️ Drag started at X:', e.clientX)
+      this.isDragging = true
+      
+      const startX = e.clientX
+      const startLeftWidth = this.leftWidth
+      
+      const handleMouseMove = (e) => {
+        const deltaX = e.clientX - startX
+        this.updatePanelWidth(deltaX, startLeftWidth)
+      }
+      
+      const handleMouseUp = () => {
+        console.log('🏁 Drag ended')
+        this.isDragging = false
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+      
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    },
+    
+    // 分隔线鼠标按下处理（新的独立方法）
+    onSplitterMouseDown(e) {
+      console.log('🖱️ onSplitterMouseDown called')
+      this.initDrag(e)
+    },
+    
+    // 拖拽时的宽度更新方法
+    updatePanelWidth(deltaX, startLeftWidth) {
+      const dialogWidth = window.innerWidth * 0.95
+      const newLeftWidth = Math.max(
+        this.minPanelWidth,
+        Math.min(
+          startLeftWidth + deltaX,
+          dialogWidth - this.minPanelWidth - 4
+        )
+      )
+      console.log(`📐 Width: start=${startLeftWidth}, delta=${deltaX}, newLeft=${newLeftWidth}`)
+      
+      // 使用 Vue.set 确保响应式更新
+      this.$set(this, 'leftWidth', newLeftWidth)
+      this.$set(this, 'rightWidth', dialogWidth - newLeftWidth - 4)
+      
+      console.log(`✅ Panel updated: left=${this.leftWidth}px, right=${this.rightWidth}px`)
+    },
+
+    // 计算表格高度
+    computeTableHeight() {
+      const availableHeight = window.innerHeight * 0.90 - 
+                              80 - // Dialog header + padding
+                              32 - // breadcrumb
+                              72 - // operate buttons (margin included)
+                              24 - // card padding top/bottom
+                              40 - // batch actions
+                              36 - // table header
+                              16   // scrollbar estimate
+      
+    
+      return Math.max(availableHeight, 300)
+    },
+
     // 获取文件列表
     async fetchFiles(path = this.currentPath) {
       this.isLoading = true
@@ -1185,11 +1342,12 @@ export default {
     },
 
     // 单文件上传（使用与 el-upload 相同的接口和参数）
-    uploadSingleFile(file, onProgress) {
+    // targetDir：指定上传目标目录，不传则回退到 this.currentPath（直接上传场景）
+    uploadSingleFile(file, onProgress, targetDir) {
       return new Promise((resolve, reject) => {
         const formData = new FormData()
         // path 必须先于 file 追加：后端流式接收需要在读到文件内容前就知道目标路径
-        formData.append('path', this.currentPath)
+        formData.append('path', targetDir || this.currentPath)
         formData.append('file', file)
 
         const xhr = new XMLHttpRequest()
@@ -1254,13 +1412,18 @@ export default {
       this.queueTab = 'queue'
     },
     // 并发调度：最多 3 路并发，其余排队；完成后自动补位
-    pumpUploads() {
+    // onlyId 参数：单条目模式（选定上传），只上传指定条目，完成后不自动补位其他条目
+    pumpUploads(onlyId) {
+      const singleMode = onlyId !== undefined
       while (this.uploadingCount < 3) {
-        const entry = this.transferQueue.find(item => item.status === 'pending')
+        const entry = singleMode
+          ? this.transferQueue.find(item => item.id === onlyId && item.status === 'pending')
+          : this.transferQueue.find(item => item.status === 'pending')
         if (!entry) break
         entry.status = 'uploading'
         this.uploadingCount++
-        this.uploadSingleFile(entry.file, p => { entry.percent = p }).then(() => {
+        const dir = entry.remotePath.substring(0, entry.remotePath.lastIndexOf('/')) || '/'
+        this.uploadSingleFile(entry.file, p => { entry.percent = p }, dir).then(() => {
           this.transferQueue = this.transferQueue.filter(item => item.id !== entry.id)
           this.successTransfers.push({ id: entry.id, name: entry.name, size: entry.size, remotePath: entry.remotePath, time: this.nowStr() })
         }).catch(err => {
@@ -1269,7 +1432,8 @@ export default {
           this.failedTransfers.push({ id: entry.id, file: entry.file, name: entry.name, size: entry.size, remotePath: entry.remotePath, reason: err.message || '上传失败', time: this.nowStr() })
         }).finally(() => {
           this.uploadingCount--
-          this.pumpUploads()
+          // 普通模式（全部上传/补位）完成后继续调度；单条目模式不自动补位其他条目
+          if (!singleMode) this.pumpUploads()
           // 队列已无进行中/待上传条目时刷新文件列表
           if (!this.transferQueue.length) this.fetchFiles()
         })
@@ -1285,12 +1449,12 @@ export default {
       this.closeCtxMenu()
       this.pumpUploads()
     },
-    // 右键菜单：选定上传（移到队首，仍受并发限制）
+    // 右键菜单：选定上传（只上传右键选中的文件，其他 pending 条目保持待上传不自动启动）
     uploadOne(row) {
       this.closeCtxMenu()
       if (!row || row.status !== 'pending') return
-      this.transferQueue = [row, ...this.transferQueue.filter(item => item.id !== row.id)]
-      this.pumpUploads()
+      // 单条目模式：pumpUploads 只拾取指定 id 的条目，完成后不自动补位
+      this.pumpUploads(row.id)
     },
     // 右键菜单：选定移除（仅移除待上传条目；按 id 判断，避免捕获的旧引用状态过期）
     removeOne(row) {
@@ -1460,6 +1624,10 @@ export default {
 /* 表格容器相对定位，用于拖拽遮罩层绝对定位 */
 .table-container {
   position: relative;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden; /* 防止水平滚动 */
+  max-width: 100%;
 }
 
 /* 拖拽上传遮罩层样式：覆盖整个表格区域，半透明背景，中心提示 */
@@ -1565,6 +1733,207 @@ export default {
   color: #606266;
 }
 .ctx-menu-item:hover { background: #ecf5ff; color: #409EFF; }
+
+/* ===== 可拖拽分栏布局 ===== */
+.split-view-layout {
+  display: flex !important;
+  height: calc(90vh - 80px);
+  overflow: hidden;
+  padding: 0 4px;
+  align-items: stretch; /* 确保所有子元素等高 */
+}
+
+/* 确保 Dialog 主体不干扰布局 */
+.sftp-browser-dialog .el-dialog__body {
+  padding: 12px 12px 0 12px !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.left-panel, .right-panel {
+  position: relative;
+  overflow: hidden;
+  transition: width 0.1s ease-out;
+  min-width: 200px;
+  max-width: calc(100vw * 0.95);
+  height: 99%; /* 确保面板占满容器高度 */
+  /* margin-bottom: 5px; */
+}
+
+/* 单列模式下隐藏右侧面板和分隔线 */
+@media (max-width: 999px) {
+  .vertical-splitter {
+    display: none !important;
+  }
+  .right-panel {
+    display: none !important;
+  }
+}
+
+.left-panel .el-card__body,
+.right-panel .el-card__body {
+  padding: 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* 垂直分隔线 */
+.vertical-splitter {
+  width: 4px;
+  cursor: col-resize;
+  background: #ebeef5;
+  position: relative;
+  transition: background 0.2s;
+  z-index: 100; /* 确保分隔线在最上层 */
+}
+
+.vertical-splitter:hover {
+  background: #409EFF;
+}
+
+/* 分隔栏把手：中间胶囊形指示器，提示可拖动 */
+.vertical-splitter::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 36px;
+  border-radius: 3px;
+  background: #c0c4cc;
+  transition: background 0.2s;
+}
+
+.vertical-splitter:hover::after {
+  background: #409EFF;
+}
+
+/* ===== 左侧面板内容优化 ===== */
+.file-list-card >>> .el-card__body {
+  padding: 12px;
+  height: calc(100% - 80px); /* 减去顶部和底部预留空间 */
+}
+
+/* 确保文件列表卡片占满整个面板 */
+.left-panel .file-list-card {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin: 0 10px; /* 左右外边距 10px */
+}
+
+/* 强制左侧面板内的卡片宽度为 100% */
+.left-panel .el-card {
+  width: calc(100% - 20px) !important; /* 减去左右外边距 10px*2 */
+}
+
+.batch-actions {
+  margin-top: 8px;
+  padding: 8px 0;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* ===== 右侧队列卡片优化 ===== */
+.transfer-queue-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0 10px; /* 左右外边距 10px */
+}
+
+.transfer-queue-card >>> .el-card__body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 紧凑 Tabs 样式 */
+.transfer-queue-card >>> .el-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.transfer-queue-card >>> .el-tabs__header {
+  height: 36px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.transfer-queue-card >>> .el-tabs__content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 确保表格内容可滚动 - 由 el-table 的 :max-height 动态属性控制 */
+.transfer-queue-card >>> .el-table__body-wrapper {
+  overflow-y: auto !important;
+}
+
+/* 对话框容器优化 */
+::v-deep .sftp-browser-dialog {
+  width: 95vw !important;
+  max-height: 94vh !important;
+  margin-top: 5vh !important;
+}
+
+::v-deep .sftp-browser-dialog .el-dialog__body {
+  padding: 12px 0 0;
+  overflow: hidden;
+}
+
+::v-deep .sftp-browser-dialog .el-dialog__header {
+  padding: 12px 20px;
+  margin-bottom: 0;
+}
+
+::v-deep .sftp-browser-dialog .el-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ===== 通用组件间距压缩 ===== */
+.operate {
+  padding: 4px 0;
+  margin-bottom: 12px;
+}
+
+.el-breadcrumb {
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+/* 搜索框区域优化 */
+.search-box-container {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.upload-progress {
+  margin: 4px 0;
+}
+
+/* 队列卡片拖拽进入高亮 */
+.transfer-queue-card.queue-drag-over {
+  border: 2px dashed #409EFF;
+  background: #ecf5ff;
+}
+
+/* 表格行高压缩 */
+.el-table >>> tr {
+  height: 32px;
+}
+
+.el-table th.el-table__cell,
+.el-table td.el-table__cell {
+  padding: 8px 0;
+  font-size: 13px;
+}
 
 /* 弹框底部外边距 50px，避免贴住浏览器底部（全局 element-ui.scss 将 .el-dialog 默认 50px 底边距覆盖为 0） */
 ::v-deep .sftp-browser-dialog { margin-bottom: 50px; }

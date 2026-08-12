@@ -669,6 +669,44 @@ describe('SftpBrowser 传输队列', () => {
     wrapper.destroy()
   })
 
+  it('右键动作：选定上传仅上传右键选中的文件，其他 pending 条目不受影响', async() => {
+    const { wrapper } = await createWrapper()
+    const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())
+    wrapper.vm.currentPath = '/q'
+    const files = ['a', 'b', 'c'].map(n => makeSizedFile(n + '.bin', 100))
+    wrapper.vm.handleQueueDrop(makeDropEvent(files))
+    await wrapper.vm.$nextTick()
+    // 3 个文件全部 pending，未发起上传
+    expect(wrapper.vm.transferQueue.length).toBe(3)
+    expect(MockXHR.instances.length).toBe(0)
+
+    // 选定上传 b.bin：单条目模式，只上传 b
+    const targetB = wrapper.vm.transferQueue.find(i => i.name === 'b.bin')
+    wrapper.vm.uploadOne(targetB)
+    await flushPromises()
+    // 仅发起 1 个请求（b.bin）
+    expect(MockXHR.instances.length).toBe(1)
+    const uploadingB = wrapper.vm.transferQueue.find(i => i.name === 'b.bin')
+    expect(uploadingB.status).toBe('uploading')
+    // a/c 仍在队列中，保持 pending
+    expect(wrapper.vm.transferQueue.length).toBe(3)
+    expect(wrapper.vm.transferQueue.find(i => i.name === 'a.bin').status).toBe('pending')
+    expect(wrapper.vm.transferQueue.find(i => i.name === 'c.bin').status).toBe('pending')
+
+    // b 上传成功后，a/c 保持 pending，不自动补位上传（关键：不发起新请求）
+    MockXHR.instances[0].emitSuccess()
+    await flushPromises()
+    expect(wrapper.vm.successTransfers.map(i => i.name)).toEqual(['b.bin'])
+    // a/c 仍在队列中且为 pending
+    expect(wrapper.vm.transferQueue.length).toBe(2)
+    expect(wrapper.vm.transferQueue.find(i => i.name === 'a.bin').status).toBe('pending')
+    expect(wrapper.vm.transferQueue.find(i => i.name === 'c.bin').status).toBe('pending')
+    // 没有新增的 XHR 请求
+    expect(MockXHR.instances.length).toBe(1)
+    fetchSpy.mockRestore()
+    wrapper.destroy()
+  })
+
   it('失败重试：复用原文件重新入队并可上传成功', async() => {
     const { wrapper } = await createWrapper()
     const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())
