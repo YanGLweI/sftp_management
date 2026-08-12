@@ -325,3 +325,47 @@ func SendEmail(c *gin.Context) {
 		os.Remove(keyAttachmentPath)
 	}
 }
+
+// ! 下载私钥
+type DownloadKeyResponse struct {
+	Message string `json:"message"`
+}
+
+func DownloadPrivateKey(c *gin.Context) {
+	// 获取用户名参数
+	username := c.Param("username")
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "用户名不能为空",
+		})
+		return
+	}
+
+	// 私钥文件路径 (当前工作目录下的 {用户名}_sftp_rsa_key)
+	privateKeyPath := username + "_sftp_rsa_key"
+
+	// 检查私钥文件是否存在
+	if _, err := os.Stat(privateKeyPath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"message": "私钥文件不存在，请先创建或修改用户并选择导出私钥",
+		})
+		return
+	}
+
+	// 读取私钥文件内容
+	fileContent, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "读取私钥文件失败：" + err.Error(),
+		})
+		return
+	}
+
+	// 以附件形式返回文件供下载
+	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s_sftp_rsa_key", username))
+	
+	// 在下载完成后自动清理私钥文件，提高安全性
+	defer os.Remove(privateKeyPath)
+	c.Data(http.StatusOK, "application/octet-stream", fileContent)
+}

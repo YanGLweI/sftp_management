@@ -680,7 +680,8 @@ export default {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@import '@/styles/variables.scss';
 /* 整体容器样式，和目标页面保持一致 */
 .system-update-container {
   padding: 24px;
@@ -912,7 +913,7 @@ export default {
   background-color: #ffffff;
   padding: 16px;
   border-radius: 8px;
-  font-family: "Consolas", "Monaco", monospace;
+  font-family: $font-family-mono;
   white-space: pre-wrap;
   line-height: 1.6;
   color: #2a3b47;

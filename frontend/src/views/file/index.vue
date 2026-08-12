@@ -358,6 +358,8 @@ export default {
 </style>
 
 <style scoped lang="scss">
+@import '@/styles/variables.scss';
+
 // ===== Apple 圆润风格设计 tokens =====
 $apple-blue: #0071e3;
 $apple-blue-hover: #0077ed;
@@ -366,7 +368,6 @@ $apple-text-secondary: #6e6e73;
 $apple-text-disabled: #8e8e93;
 $apple-fill: rgba(120, 120, 128, 0.08);
 $apple-fill-strong: rgba(120, 120, 128, 0.12);
-$apple-font: -apple-system, BlinkMacSystemFont, 'SF Pro SC', 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
 
 .page-container {
   position: relative;
@@ -378,7 +379,7 @@ $apple-font: -apple-system, BlinkMacSystemFont, 'SF Pro SC', 'SF Pro Text', 'Pin
   overflow: hidden;
   padding: 20px;
   box-sizing: border-box;
-  font-family: $apple-font;
+  font-family: $font-family-base;
 }
 .bg-container {
   position: fixed; top: 0; left: 0;
@@ -430,7 +431,7 @@ $apple-font: -apple-system, BlinkMacSystemFont, 'SF Pro SC', 'SF Pro Text', 'Pin
     padding: 0 24px;
     border: none;
     border-radius: 12px;
-    font-family: $apple-font;
+    font-family: $font-family-base;
     font-size: 15px;
     font-weight: 600;
     transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;

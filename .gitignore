@@ -23,3 +23,6 @@ backend/certificate/*.crt
 
 .qoder/
 .verify_tmp/
+
+dist/
+dist.zip

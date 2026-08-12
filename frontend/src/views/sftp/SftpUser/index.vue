@@ -98,6 +98,9 @@
             <el-button  size="small" type="primary">选择公钥文件</el-button>
           </el-upload>
         </el-form-item>
+        <el-form-item label="下载私钥" label-width="80px" prop="downloadKey" v-if="userForm.loginType === 'KeyFile' || userForm.loginType === 'both'">
+          <el-switch v-model="userForm.downloadKey"></el-switch>
+        </el-form-item>
         <el-form-item label="永不过期" label-width="80px" prop="noExpire">
             <el-switch v-model="userForm.noExpire"></el-switch>
         </el-form-item>
@@ -300,7 +303,7 @@ export default {
       buttonLoading:false,
       showPassword:false,
       userForm:{
-        id:'', // 用户id
+        id:'', // 用户 id
         name:'', // 账号名
         loginType:'Password', // 登录类型
         noExpire:false, // 永不过期
@@ -309,6 +312,7 @@ export default {
         checkPass:'', // 确认密码
         to:'',   //收件人
         cc:'',  //抄送人
+        downloadKey:false, // 是否下载私钥
       },
       // 邮箱相关
       options:[],
@@ -360,6 +364,19 @@ export default {
         ],
         to:[{required: true, message: '请输入邮箱地址', trigger: 'blur' }],
         cc:[{required: false, message: '请输入邮箱地址', trigger: 'blur' }],
+        downloadKey: [
+          {
+            validator: (rule, value, callback) => {
+              // 如果选择了下载私钥，必须是 KeyFile 或 both 类型
+              if (value && this.userForm.loginType !== 'KeyFile' && this.userForm.loginType !== 'both') {
+                callback(new Error('下载私钥仅支持 KeyFile 和 both 登录类型'))
+              } else {
+                callback()
+              }
+            },
+            trigger: 'change'
+          }
+        ],
       },
       // sftp浏览器相关数据
       SftpBrowserVisible: false,
@@ -438,6 +455,7 @@ export default {
         checkPass:'',
         to:'',
         cc:'',
+        downloadKey:false,
       }
       // 打开后立即重置验证（确保没有残留提示）
       this.$nextTick(() => {
@@ -458,7 +476,7 @@ export default {
       this.buttonLoading = true
       this.$refs['ruleForm'].validate(async (valid) =>{
         if (valid) {
-          const {id,name,loginType,password,emailOrNot,noExpire,to,cc} = this.userForm
+          const {id,name,loginType,password,emailOrNot,noExpire,to,cc,downloadKey} = this.userForm
           let message;
           if (loginType === 'KeyFile') {
             message = '密钥修改成功';
@@ -480,7 +498,7 @@ export default {
                 }
                 formData.append(key, this.userForm[key])
               }
-              // 如果选择了导入公钥文件，则添加到formData中
+              // 如果选择了导入公钥文件，则添加到 formData 中
               if (this.userForm.publicKey && this.publicKeyFile.length > 0) {
                 this.publicKeyFile.forEach(item => {
                   formData.append('file', item.raw);
@@ -489,6 +507,30 @@ export default {
             if(this.title == '修改密码'){
               const result = await this.$API.sftpuser.reqUpdateUser(formData)
               if(result.code == 200){
+                // 处理私钥下载
+                if (downloadKey && (loginType === 'KeyFile' || loginType === 'both')) {
+                  try {
+                    const downloadResult = await this.$API.sftpuser.reqDownloadKey(name)
+                    if (downloadResult && downloadResult.data instanceof Blob) {
+                      // 触发浏览器下载
+                      const blob = downloadResult.data
+                      const url = window.URL.createObjectURL(blob)
+                      const link = document.createElement('a')
+                      link.href = url
+                      link.download = `${name}_sftp_rsa_key`
+                      document.body.appendChild(link)
+                      link.click()
+                      document.body.removeChild(link)
+                      window.URL.revokeObjectURL(url)
+                          
+                      // 更新消息提示
+                      message += ', 私钥已下载'
+                    }
+                  } catch (error) {
+                    console.error('私钥下载失败:', error)
+                    // 不阻止主流程继续
+                  }
+                }
                 if(this.userForm.emailOrNot){
                   this.email.to = to
                   this.email.cc = cc
@@ -505,14 +547,38 @@ export default {
             }else{
               const result = await this.$API.sftpuser.reqAddUser(formData)
               if(result.code == 200){
+                // 处理私钥下载
+                if (downloadKey && (loginType === 'KeyFile' || loginType === 'both')) {
+                  try {
+                    const downloadResult = await this.$API.sftpuser.reqDownloadKey(name)
+                    if (downloadResult && downloadResult.data instanceof Blob) {
+                      // 触发浏览器下载
+                      const blob = downloadResult.data
+                      const url = window.URL.createObjectURL(blob)
+                      const link = document.createElement('a')
+                      link.href = url
+                      link.download = `${name}_sftp_rsa_key`
+                      document.body.appendChild(link)
+                      link.click()
+                      document.body.removeChild(link)
+                      window.URL.revokeObjectURL(url)
+                                  
+                      // 更新消息提示
+                      message += ', 私钥已下载'
+                    }
+                  } catch (error) {
+                    console.error('私钥下载失败:', error)
+                    // 不阻止主流程继续
+                  }
+                }
                 if(this.userForm.emailOrNot){
                   this.email.to = to
                   this.email.cc = cc
                   this.email.subject = `${name}`
                   await this.$API.sftpuser.reqSendEmail(this.email)
-                  this.$message({type:'success',message:`账号:${name} 添加成功,邮件已发送`})
+                  this.$message({type:'success',message:`账号:${name} 添加成功${message ? ',' + message : ''},邮件已发送`})
                 }else{
-                  this.$message({type:'success',message:`账号:${name} 添加成功`})
+                  this.$message({type:'success',message:`账号:${name} 添加成功${message ? ':' + message : ''}`})
                 }
                 this.getUserList(this.page)
                 this.dialogFormVisible = false

@@ -6,22 +6,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// registerSFTPRouter 注册SFTP相关路由
+// registerSFTPRouter 注册 SFTP 相关路由
 func registerSFTPRouter(r *gin.Engine) {
 	sftpGroup := r.Group("/sftp")
 	// sftpGroup.Use(middleware.AuthMiddleware())
 	{
-		// SFTP登录:请求体{"username":"string","password":"string"}
+		// SFTP 登录：请求体{"username":"string","password":"string"}
 		sftpGroup.POST("/login", controller.LoginSFTP)
-		// 获取目录下的文件列表:请求参数 /files?path=string
+		// 获取目录下的文件列表：请求参数 /files?path=string
 		sftpGroup.GET("/files", controller.GetFiles)
-		// SFTP登出
+		// SFTP 登出
 		sftpGroup.GET("/logout", controller.LogoutSFTP)
 		// 上传文件
 		sftpGroup.POST("/upload", controller.UploadFile)
-		// 创建目录:请求体{"path":"string","name":"string"}
+		// 创建目录：请求体{"path":"string","name":"string"}
 		sftpGroup.POST("/mkdir", controller.CreateFolder)
-		// 下载文件:请求参数 /download?path=string
+		// 下载文件：请求参数 /download?path=string
 		sftpGroup.GET("/download", controller.DownloadFile)
 		// sftpGroup.Handle("GET", "/download", controller.DownloadFile)
 		// sftpGroup.Handle("HEAD", "/download", controller.DownloadFile)

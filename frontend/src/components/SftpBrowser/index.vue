@@ -83,8 +83,10 @@
       <el-card shadow="hover" class="file-list-card">
         <div class="table-container" ref="tableContainer" @dragleave.prevent="onTableDragLeave" style="flex:1;overflow:hidden;">
           <el-empty
-            description="这个目录很穷，什么都没有_(:3 ∠)_"
+            description="这个目录很穷，什么都没有_(:3 ∠) _"
             v-if="!fileList"
+            :image-scale="2"
+            :style="{ width: '100%', height: getEmptyComponentHeight() + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center' }"
           ></el-empty>
 
           <el-table
@@ -463,7 +465,7 @@
       </el-table>
       <span slot="footer">
         <el-button @click="batchDeleteDialogVisible = false">取消</el-button>
-        <el-button type="danger" @click="confirmBatchDelete">确定</el-button>
+        <el-button type="danger" @click="confirmBatchDelete" :loading="isBatchDeleting">{{ isBatchDeleting ? '删除中...' : '确 定' }}</el-button>
       </span>
     </el-dialog>
   </el-dialog>
@@ -524,6 +526,7 @@ export default {
       // 选中的文件
       selectedFiles: [],
       batchDeleteDialogVisible: false,
+      isBatchDeleting: false,      // 批量删除中状态
       // 拖拽上传相关
       dragOverlayVisible: false,      // 遮罩层显隐
       isUploading: false,              // 防止重复上传
@@ -755,6 +758,20 @@ export default {
                               16   // scrollbar estimate
       
     
+      return Math.max(availableHeight, 300)
+    },
+
+    // 空组件高度的 getter
+    getEmptyComponentHeight() {
+      const availableHeight = window.innerHeight * 0.90 - 
+                              80 - // Dialog header + padding
+                              32 - // breadcrumb
+                              72 - // operate buttons (margin included)
+                              24 - // card padding top/bottom
+                              40 - // batch actions
+                              36 - // table header
+                              60     // empty component content height
+      
       return Math.max(availableHeight, 300)
     },
 
@@ -1114,14 +1131,21 @@ export default {
     },
     // 批量删除
     async confirmBatchDelete(){
+      this.isBatchDeleting = true  // 开始删除时设置 loading
+      
       try {
         const res = await this.$API.sftpuser.reqSftpBatchDelete(this.selectedFiles)
         if (res.code === 200) {
           this.$message.success('删除成功')
           this.fetchFiles()
           this.selectedFiles = []
+        } else {
+          this.$message.error(res.message || '删除失败')
         }
-      } catch (error) {} finally {
+      } catch (error) {
+        this.$message.error('删除失败')
+      } finally {
+        this.isBatchDeleting = false  // 无论成功失败都关闭 loading
         this.batchDeleteDialogVisible = false
       }
     },

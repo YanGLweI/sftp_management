@@ -1,7 +1,7 @@
-//?SFTP管理模块API
+//?SFTP 管理模块 API
 import request from '@/utils/request.js'
 
-// ! 获取sftp用户列表  /user/account/{page}/{limit} get
+// ! 获取 sftp 用户列表  /user/account/{page}/{limit} get
 export const reqUserList = (page,limit,searchObj) => request({url:`/user/account/${page}/${limit}`,method:'get',params:searchObj})
 
 // ! 添加用户的接口  /user/account  post
@@ -18,6 +18,13 @@ export const reqDeleteUsers = (ids) => request({url:'/user/account',method:'dele
 
 // ! 发送邮件 /user/email post
 export const reqSendEmail = (data) => request({url:'/user/email',method:'post',data})
+
+// ! 下载私钥 /user/download-key/:username get (接收 blob)
+export const reqDownloadKey = (username) => request({
+  url: `/user/download-key/${username}`,
+  method: 'get',
+  responseType: 'blob' // 重要：接收二进制数据
+})
 
 // ! 获取日志列表  /user/log/{page}/{limit} get
 export const reqLogList = (page,limit,searchObj) => request({url:`/user/log/${page}/${limit}`,method:'get',params:searchObj})
