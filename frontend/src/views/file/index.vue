@@ -314,6 +314,16 @@ export default {
           this.$message({ type: 'error', message: result.message });
         }
       } catch {}
+      // 关闭浏览器后将焦点还给当前标签页的登录输入框
+      this.$nextTick(() => {
+        if (this.activeName === 'keyfile') {
+          this.$refs.keyUsername.focus()
+        } else if (this.activeName === 'hotlabel') {
+          this.$refs.label.focus()
+        } else {
+          this.$refs.username.focus()
+        }
+      })
     },
     handleClick(tab) {
       this.$nextTick(() => {
