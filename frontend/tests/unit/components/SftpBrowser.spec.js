@@ -506,6 +506,77 @@ describe('SftpBrowser 传输队列', () => {
     wrapper.destroy()
   })
 
+  it('失败记录右键菜单：重试入队 / 清空全部记录', async() => {
+    const { wrapper } = await createWrapper()
+    const failed = { id: 1, file: makeSizedFile('f.bin', 100), name: 'f.bin', size: 100, remotePath: '/q/f.bin', reason: '连接失败', time: 'x' }
+    wrapper.vm.failedTransfers = [failed]
+
+    wrapper.vm.openCtxMenu(failed, null, { preventDefault: () => {}, clientX: 10, clientY: 20 }, 'failed')
+    await wrapper.vm.$nextTick()
+    const menuEl = document.querySelector('.ctx-menu')
+    expect(menuEl).toBeTruthy()
+    expect(Array.from(menuEl.querySelectorAll('.ctx-menu-item')).map(el => el.textContent.trim())).toEqual(['重试', '全部重试', '清空记录'])
+    expect(wrapper.vm.ctxMenu.ctx).toBe('failed')
+
+    // 重试：菜单关闭，记录移入队列并切到队列 tab
+    wrapper.vm.retryFailed(failed)
+    expect(wrapper.vm.ctxMenu.visible).toBe(false)
+    expect(wrapper.vm.failedTransfers.length).toBe(0)
+    expect(wrapper.vm.transferQueue.length).toBe(1)
+    expect(wrapper.vm.transferQueue[0].name).toBe('f.bin')
+    expect(wrapper.vm.queueTab).toBe('queue')
+
+    // 清空记录：清空所有失败记录
+    wrapper.vm.failedTransfers = [{ id: 2, file: makeSizedFile('g.bin', 100), name: 'g.bin', size: 100, remotePath: '/q/g.bin', reason: '超时', time: 'y' }]
+    wrapper.vm.openCtxMenu(wrapper.vm.failedTransfers[0], null, { preventDefault: () => {}, clientX: 10, clientY: 20 }, 'failed')
+    wrapper.vm.clearFailed()
+    expect(wrapper.vm.ctxMenu.visible).toBe(false)
+    expect(wrapper.vm.failedTransfers.length).toBe(0)
+    wrapper.destroy()
+  })
+
+  it('失败记录右键菜单：全部重试将所有失败记录重新入队', async() => {
+    const { wrapper } = await createWrapper()
+    wrapper.vm.failedTransfers = [
+      { id: 1, file: makeSizedFile('a.bin', 100), name: 'a.bin', size: 100, remotePath: '/q/a.bin', reason: '连接失败', time: 'x' },
+      { id: 2, file: makeSizedFile('b.bin', 200), name: 'b.bin', size: 200, remotePath: '/q/b.bin', reason: '超时', time: 'y' }
+    ]
+
+    wrapper.vm.openCtxMenu(wrapper.vm.failedTransfers[0], null, { preventDefault: () => {}, clientX: 10, clientY: 20 }, 'failed')
+    await wrapper.vm.$nextTick()
+    const menuEl = document.querySelector('.ctx-menu')
+    expect(Array.from(menuEl.querySelectorAll('.ctx-menu-item')).map(el => el.textContent.trim())).toEqual(['重试', '全部重试', '清空记录'])
+
+    wrapper.vm.retryAllFailed()
+    expect(wrapper.vm.ctxMenu.visible).toBe(false)
+    expect(wrapper.vm.failedTransfers.length).toBe(0)
+    expect(wrapper.vm.transferQueue.length).toBe(2)
+    expect(wrapper.vm.transferQueue.map(i => i.name)).toEqual(['a.bin', 'b.bin'])
+    expect(wrapper.vm.transferQueue.every(i => i.status === 'pending')).toBe(true)
+    expect(wrapper.vm.queueTab).toBe('queue')
+    // 全部重试立即启动调度（3 路并发上限内全部发起）
+    expect(MockXHR.instances.length).toBe(2)
+    wrapper.destroy()
+  })
+
+  it('成功记录右键菜单：清空记录', async() => {
+    const { wrapper } = await createWrapper()
+    wrapper.vm.successTransfers = [{ id: 1, name: 's.bin', size: 100, remotePath: '/q/s.bin', time: 'x' }]
+
+    wrapper.vm.openCtxMenu(wrapper.vm.successTransfers[0], null, { preventDefault: () => {}, clientX: 10, clientY: 20 }, 'success')
+    await wrapper.vm.$nextTick()
+    const menuEl = document.querySelector('.ctx-menu')
+    expect(menuEl).toBeTruthy()
+    expect(Array.from(menuEl.querySelectorAll('.ctx-menu-item')).map(el => el.textContent.trim())).toEqual(['清空记录'])
+    expect(wrapper.vm.ctxMenu.ctx).toBe('success')
+
+    // 清空记录：菜单关闭，成功记录清空
+    wrapper.vm.clearSuccess()
+    expect(wrapper.vm.ctxMenu.visible).toBe(false)
+    expect(wrapper.vm.successTransfers.length).toBe(0)
+    wrapper.destroy()
+  })
+
   it('失败原因取自响应 message（含 HTTP 400 场景）', async() => {
     const { wrapper } = await createWrapper()
     const fetchSpy = jest.spyOn(wrapper.vm, 'fetchFiles').mockImplementation(() => Promise.resolve())

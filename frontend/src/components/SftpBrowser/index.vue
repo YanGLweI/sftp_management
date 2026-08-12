@@ -91,6 +91,7 @@
             ref="multipleTable"
             :row-class-name="tableRowClassName"
             @selection-change="handleSelectionChange"
+            @row-contextmenu="(row, column, event) => openCtxMenu(row, column, event, 'file')"
             :data="filteredFileList"
             v-loading="isLoading"
             :height="computeTableHeight()"
@@ -117,6 +118,7 @@
                   @click="handleRowFocus(row)"
                   @dblclick="handleItemOpen(row)"
                   :class="{'dir-item': row.isDir, 'file-item': !row.isDir, 'keyboard-focus-row': isFocusRow(row)}"
+                  style="user-select: none;"
                 >
                   <i :class="row.isDir ? 'el-icon-folder' : 'el-icon-document'"></i>
                   {{ row.name }}
@@ -133,40 +135,6 @@
             <el-table-column prop="modified" label="修改时间" width="200" sortable>
               <template slot-scope="{row}">
                 {{ formatDate(row.modified) }}
-              </template>
-            </el-table-column>
-
-            <el-table-column align="center" label="操作" width="150" fixed="right">
-              <template slot-scope="{row}">
-                <el-button
-                  v-if="!row.isDir"
-                  size="mini"
-                  type="primary"
-                  @click="handleDownload(row)"
-                  circle
-                  icon="el-icon-download"
-                ></el-button>
-                <el-button
-                  v-else
-                  size="mini"
-                  type="primary"
-                  @click="handleDownloadDir(row)"
-                  circle
-                  icon="el-icon-download"
-                ></el-button>
-                <el-button
-                  size="mini"
-                  circle
-                  icon="el-icon-edit"
-                  @click="startRename(row)"
-                ></el-button>
-                <el-button
-                  size="mini"
-                  type="danger"
-                  @click="handleDelete(row)"
-                  circle
-                  icon="el-icon-delete"
-                ></el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -197,7 +165,7 @@
             <div>
               <span style="color: #909399;" v-if="selectedFiles.length > 0">{{ selectDescription }}</span>
               <span style="color: #909399;" v-else>{{ description }}</span>
-              <span style="color: #C0C4CC; font-size: 12px; margin-left: 12px;">↑↓ 选择 · Enter/双击 打开 · Backspace 返回</span>
+              <span style="color: #C0C4CC; font-size: 12px; margin-left: 12px;">↑↓ 选择 · Enter/双击 打开 · Delete 删除 · Backspace 返回</span>
             </div>
             <div>
               <el-button type="primary" size="mini" icon="el-icon-download" round @click="handleBatchDownload" :disabled="selectedFiles.length === 0">批量下载</el-button>
@@ -261,10 +229,8 @@
             </el-table>
           </el-tab-pane>
           <el-tab-pane :label="`传输失败 (${failedTransfers.length})`" name="failed">
-            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
-              <el-button size="mini" icon="el-icon-delete" :disabled="!failedTransfers.length" @click="clearFailed">清空记录</el-button>
-            </div>
-            <el-table ref="failedTable" :data="failedTransfers" size="mini" border :max-height="queueTableMaxHeightCompact">
+            <el-table ref="failedTable" :data="failedTransfers" size="mini" border :max-height="queueTableMaxHeight"
+              @row-contextmenu="(row, column, event) => openCtxMenu(row, column, event, 'failed')">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="大小" width="100">
@@ -272,18 +238,11 @@
               </el-table-column>
               <el-table-column prop="reason" label="失败原因" show-overflow-tooltip></el-table-column>
               <el-table-column prop="time" label="时间" width="160"></el-table-column>
-              <el-table-column label="操作" width="80" align="center">
-                <template slot-scope="{row}">
-                  <el-button size="mini" type="primary" @click="retryFailed(row)">重试</el-button>
-                </template>
-              </el-table-column>
             </el-table>
           </el-tab-pane>
           <el-tab-pane :label="`成功的传输 (${successTransfers.length})`" name="success">
-            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
-              <el-button size="mini" icon="el-icon-delete" :disabled="!successTransfers.length" @click="clearSuccess">清空记录</el-button>
-            </div>
-            <el-table ref="successTable" :data="successTransfers" size="mini" border :max-height="queueTableMaxHeightCompact">
+            <el-table ref="successTable" :data="successTransfers" size="mini" border :max-height="queueTableMaxHeight"
+              @row-contextmenu="(row, column, event) => openCtxMenu(row, column, event, 'success')">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="大小" width="100">
@@ -305,10 +264,26 @@
         :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
         @click.stop
       >
-        <div class="ctx-menu-item" @click="uploadAll">全部上传</div>
-        <div class="ctx-menu-item" @click="uploadOne(ctxMenu.row)">选定上传</div>
-        <div class="ctx-menu-item" @click="removeOne(ctxMenu.row)">选定移除</div>
-        <div class="ctx-menu-item" @click="removeAllPending">全部移除</div>
+        <template v-if="ctxMenu.ctx === 'file'">
+          <div class="ctx-menu-item" @click="handleDownload(ctxMenu.row)"><i class="el-icon-download"></i> 下载</div>
+          <div class="ctx-menu-item" @click="handleRenameFromCtx(ctxMenu.row)"><i class="el-icon-edit"></i> 重命名</div>
+          <div class="ctx-menu-item" @click="handleDeleteFromCtx(ctxMenu.row)"><i class="el-icon-delete"></i> 删除</div>
+          <div class="ctx-menu-item" @click="copyFileName(ctxMenu.row)"><i class="el-icon-document-copy"></i> 复制文件名</div>
+        </template>
+        <template v-else-if="ctxMenu.ctx === 'queue'">
+          <div class="ctx-menu-item" @click="uploadAll">全部上传</div>
+          <div class="ctx-menu-item" @click="uploadOne(ctxMenu.row)">选定上传</div>
+          <div class="ctx-menu-item" @click="removeOne(ctxMenu.row)">选定移除</div>
+          <div class="ctx-menu-item" @click="removeAllPending">全部移除</div>
+        </template>
+        <template v-else-if="ctxMenu.ctx === 'failed'">
+          <div class="ctx-menu-item" @click="retryFailed(ctxMenu.row)">重试</div>
+          <div class="ctx-menu-item" @click="retryAllFailed">全部重试</div>
+          <div class="ctx-menu-item" @click="clearFailed">清空记录</div>
+        </template>
+        <template v-else-if="ctxMenu.ctx === 'success'">
+          <div class="ctx-menu-item" @click="clearSuccess">清空记录</div>
+        </template>
       </div>
 
     <!-- 新建文件夹 -->
@@ -387,6 +362,7 @@
         border
         max-height="400"
         v-if="deepSearchResults.length > 0 || isSearching"
+        @row-contextmenu="(row, column, event) => openCtxMenu(row, column, event, 'file')"
       >
         <el-table-column prop="name" label="名称" sortable show-overflow-tooltip>
           <template slot-scope="{row}">
@@ -399,7 +375,7 @@
                 v-focus="true"
               ></el-input>
             </div>
-            <div v-else :class="{'dir-item': row.isDir, 'file-item': !row.isDir}">
+            <div v-else :class="{'dir-item': row.isDir, 'file-item': !row.isDir}" style="user-select: none;">
               <i :class="row.isDir ? 'el-icon-folder' : 'el-icon-document'"></i>
               {{ row.name }}
             </div>
@@ -414,39 +390,6 @@
         <el-table-column prop="modified" label="修改时间" width="200" sortable>
           <template slot-scope="{row}">
             {{ formatDate(row.modified) }}
-          </template>
-        </el-table-column>
-        <el-table-column align="center" label="操作" width="150" fixed="right">
-          <template slot-scope="{row}">
-            <el-button
-              v-if="!row.isDir"
-              size="mini"
-              type="primary"
-              @click="handleDownload(row)"
-              circle
-              icon="el-icon-download"
-            ></el-button>
-            <el-button
-              v-else
-              size="mini"
-              type="primary"
-              @click="handleDownloadDir(row)"
-              circle
-              icon="el-icon-download"
-            ></el-button>
-            <el-button
-              size="mini"
-              circle
-              icon="el-icon-edit"
-              @click="startDeepSearchRename(row)"
-            ></el-button>
-            <el-button
-              size="mini"
-              type="danger"
-              @click="handleDeepSearchDelete(row)"
-              circle
-              icon="el-icon-delete"
-            ></el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -586,7 +529,7 @@ export default {
       queueTab: 'queue',      // 队列卡片当前标签页 queue/failed/success
       uploadingCount: 0,      // 当前并发上传数（上限 3）
       queueDragOver: false,   // 拖入队列卡片高亮
-      ctxMenu: { visible: false, x: 0, y: 0, row: null }, // 队列右键菜单
+      ctxMenu: { visible: false, x: 0, y: 0, row: null, ctx: 'queue' }, // 队列右键菜单（ctx: queue/failed/success）
       queueIdSeq: 0,          // 队列条目 id 序号
       // 描述
       description: '', // 当前目录描述
@@ -616,8 +559,6 @@ export default {
       minPanelWidth: 200,
       // 队列表格最大高度（随窗口动态计算）
       queueTableMaxHeight: 450,
-      // 带清空按钮标签页的表格最大高度（减去按钮高度）
-      queueTableMaxHeightCompact: 410,
     }
   },
   mounted() {
@@ -698,9 +639,7 @@ export default {
       // split-view-layout 高度 = 90vh - 80px
       // 减去: el-card body padding(24px) + tabs header(44px) + 表格预留边距(30px)
       this.queueTableMaxHeight = Math.floor(window.innerHeight * 0.9 - 80 - 24 - 44 - 30)
-      // 带清空记录按钮的标签页: 再减去按钮高度(32px) + 按钮下方边距(8px)
-      this.queueTableMaxHeightCompact = this.queueTableMaxHeight - 40
-      console.log(`Queue table max height: ${this.queueTableMaxHeight}px, compact: ${this.queueTableMaxHeightCompact}px`)
+      console.log(`Queue table max height: ${this.queueTableMaxHeight}px`)
     },
 
     // 处理窗口 resize
@@ -721,9 +660,7 @@ export default {
         
         // 重新计算队列表格最大高度
         this.queueTableMaxHeight = Math.floor(window.innerHeight * 0.9 - 80 - 24 - 44 - 30)
-        // 带清空记录按钮的标签页: 再减去按钮高度(32px) + 按钮下方边距(8px)
-        this.queueTableMaxHeightCompact = this.queueTableMaxHeight - 40
-        console.log(`Queue table max height: ${this.queueTableMaxHeight}px, compact: ${this.queueTableMaxHeightCompact}px`)
+        console.log(`Queue table max height: ${this.queueTableMaxHeight}px`)
         
         // 重新布局队列表格（高度变化后需要刷新）
         const refMap = { queue: 'queueTable', failed: 'failedTable', success: 'successTable' }
@@ -934,15 +871,37 @@ export default {
       return isValid
     },
     // 上传成功
-    handleUploadSuccess() {
+    handleUploadSuccess(response, file) {
       this.$message.success('上传成功')
       this.fetchFiles()
       this.resetUploadProgress()
+      // 记录到成功的传输
+      const remotePath = (this.currentPath === '/' ? '/' : this.currentPath + '/') + file.name
+      this.successTransfers.push({
+        id: ++this.queueIdSeq,
+        name: file.name,
+        size: file.size,
+        remotePath,
+        time: this.nowStr()
+      })
+      this.queueTab = 'success'
     },
     // 上传失败
-    handleUploadError() {
+    handleUploadError(err, file) {
       this.$message.error('上传失败')
       this.resetUploadProgress()
+      // 记录到传输失败
+      const remotePath = (this.currentPath === '/' ? '/' : this.currentPath + '/') + file.name
+      this.failedTransfers.push({
+        id: ++this.queueIdSeq,
+        file: file,
+        name: file.name,
+        size: file.size,
+        remotePath,
+        reason: err.message || '上传失败',
+        time: this.nowStr()
+      })
+      this.queueTab = 'failed'
     },
     // 上传进度
     handleUploadProgress(e) {
@@ -1222,13 +1181,14 @@ export default {
         }
         e.preventDefault(); // 阻止浏览器后退
       }
-      // Delete 键触发批量删除
+      // Delete 键：有勾选时批量删除，有焦点行时单个删除
       else if (e.keyCode === 46 || e.key === 'Delete') {
-        // 只有选中时才弹出对话框
         if (this.selectedFiles.length > 0) {
           this.openBatchDeleteDialog();
-          e.preventDefault(); // 阻止可能的默认行为
+        } else if (this.focusIndex >= 0 && this.focusIndex < this.filteredFileList.length) {
+          this.handleDelete(this.filteredFileList[this.focusIndex]);
         }
+        e.preventDefault();
       }
       
       // Enter 确认批量删除（对话框打开时）
@@ -1315,15 +1275,34 @@ export default {
       // 串行上传，并更新整体进度
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
+        const remotePath = (this.currentPath === '/' ? '/' : this.currentPath + '/') + file.name
         try {
           await this.uploadSingleFile(file, (percent) => {
             // 整体百分比 = 已完成文件 + 当前文件进度加权
             this.uploadPercent = Math.floor(((i + percent / 100) / files.length) * 100)
           })
           successCount++
+          // 记录到成功的传输
+          this.successTransfers.push({
+            id: ++this.queueIdSeq,
+            name: file.name,
+            size: file.size,
+            remotePath,
+            time: this.nowStr()
+          })
         } catch (err) {
           console.error(err)
           failCount++
+          // 记录到传输失败
+          this.failedTransfers.push({
+            id: ++this.queueIdSeq,
+            file: file,
+            name: file.name,
+            size: file.size,
+            remotePath,
+            reason: err.message || '上传失败',
+            time: this.nowStr()
+          })
         }
       }
       this.uploadPercent = 100
@@ -1338,6 +1317,12 @@ export default {
         this.fetchFiles() // 刷新列表
       } else if (failCount > 0) {
         this.$message.error('所有文件上传失败')
+      }
+      // 切换标签页：失败优先，其次成功
+      if (failCount > 0) {
+        this.queueTab = 'failed'
+      } else if (successCount > 0) {
+        this.queueTab = 'success'
       }
     },
 
@@ -1471,17 +1456,30 @@ export default {
     },
     // 失败记录重试：重新入队并启动调度
     retryFailed(row) {
+      this.closeCtxMenu()
       this.failedTransfers = this.failedTransfers.filter(item => item.id !== row.id)
       this.transferQueue.push({ id: ++this.queueIdSeq, file: row.file, name: row.name, size: row.size, remotePath: row.remotePath, status: 'pending', percent: 0 })
       this.queueTab = 'queue'
       this.pumpUploads()
     },
+    // 全部失败记录重试：全部重新入队并启动调度
+    retryAllFailed() {
+      this.closeCtxMenu()
+      this.failedTransfers.forEach(item => {
+        this.transferQueue.push({ id: ++this.queueIdSeq, file: item.file, name: item.name, size: item.size, remotePath: item.remotePath, status: 'pending', percent: 0 })
+      })
+      this.failedTransfers = []
+      this.queueTab = 'queue'
+      this.pumpUploads()
+    },
     // 清空失败记录
     clearFailed() {
+      this.closeCtxMenu()
       this.failedTransfers = []
     },
     // 清空成功记录
     clearSuccess() {
+      this.closeCtxMenu()
       this.successTransfers = []
     },
     // 切换队列标签页：隐藏状态下挂载的表格列宽为 0，显示后需在绘制前主动重布局避免抖动
@@ -1492,13 +1490,13 @@ export default {
         if (table) table.doLayout()
       })
     },
-    // 打开队列右键菜单（鼠标位置，自动收敛在视口内防止溢出被裁）
-    openCtxMenu(row, column, event) {
+    // 打开队列右键菜单（鼠标位置，自动收敛在视口内防止溢出被裁；ctx 标识菜单来源 queue/failed/success）
+    openCtxMenu(row, column, event, ctx = 'queue') {
       event.preventDefault()
       // el-dialog 内容懒渲染，mounted 时节点可能不存在，故在打开时确保挂载到 body
       const menuEl = this.$refs.ctxMenu
       if (menuEl && menuEl.parentNode !== document.body) document.body.appendChild(menuEl)
-      this.ctxMenu = { visible: true, x: event.clientX, y: event.clientY, row }
+      this.ctxMenu = { visible: true, x: event.clientX, y: event.clientY, row, ctx }
       this.$nextTick(() => {
         const el = this.$refs.ctxMenu
         if (!el || !this.ctxMenu.visible) return
@@ -1599,6 +1597,32 @@ export default {
       } catch {} finally {
         this.deepSearchDeleteDialogVisible = false
       }
+    },
+    // 复制文件名到剪贴板
+    copyFileName(row) {
+      this.closeCtxMenu()
+      if (!row) return
+      navigator.clipboard.writeText(row.name).then(() => {
+        this.$message.success('已复制: ' + row.name)
+      }).catch(() => {
+        const ta = document.createElement('textarea')
+        ta.value = row.name
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        this.$message.success('已复制: ' + row.name)
+      })
+    },
+    // 从右键菜单触发重命名
+    handleRenameFromCtx(row) {
+      this.closeCtxMenu()
+      this.startRename(row)
+    },
+    // 从右键菜单触发删除
+    handleDeleteFromCtx(row) {
+      this.closeCtxMenu()
+      this.handleDelete(row)
     },
     // 打开批量删除确认对话框
     openBatchDeleteDialog() {
@@ -1922,6 +1946,10 @@ export default {
 .transfer-queue-card.queue-drag-over {
   border: 2px dashed #409EFF;
   background: #ecf5ff;
+}
+
+.ctx-menu-item i {
+  margin-right: 6px;
 }
 
 /* 表格行高压缩 */
