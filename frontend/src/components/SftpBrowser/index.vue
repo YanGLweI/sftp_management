@@ -194,6 +194,11 @@
     <!-- 拖拽分隔线 (必须保持在 .split-view-layout 内部!) -->
     <div class="vertical-splitter" v-if="rightWidth > 0" @mousedown.prevent="onSplitterMouseDown"></div>
 
+    <!-- 右侧面板隐藏时的恢复把手 -->
+    <div class="restore-tab" v-if="rightWidth === 0" @click="restoreRightPanel" title="显示传输队列">
+      <i class="el-icon-arrow-left"></i>
+    </div>
+
     <!-- ===== 右侧面板（传输队列）===== -->
     <div class="right-panel" :style="{ width: `${rightWidth}px`, display: rightWidth > 0 ? 'block' : 'none' }">
     <!-- 传输队列卡片：独立拖放区，只有拖入本卡片的文件才进入队列 -->
@@ -706,20 +711,36 @@ export default {
     // 拖拽时的宽度更新方法
     updatePanelWidth(deltaX, startLeftWidth) {
       const dialogWidth = window.innerWidth * 0.95
+      // 允许左侧面板扩展到全宽（右侧面板隐藏）
       const newLeftWidth = Math.max(
         this.minPanelWidth,
         Math.min(
           startLeftWidth + deltaX,
-          dialogWidth - this.minPanelWidth - 4
+          dialogWidth
         )
       )
-      console.log(`📐 Width: start=${startLeftWidth}, delta=${deltaX}, newLeft=${newLeftWidth}`)
-      
-      // 使用 Vue.set 确保响应式更新
+      const newRightWidth = dialogWidth - newLeftWidth - 4
+      // 右侧面板宽度低于阈值时完全隐藏，左侧占满
+      const collapseThreshold = 60
+      if (newRightWidth < collapseThreshold) {
+        this.$set(this, 'leftWidth', dialogWidth)
+        this.$set(this, 'rightWidth', 0)
+      } else {
+        this.$set(this, 'leftWidth', newLeftWidth)
+        this.$set(this, 'rightWidth', newRightWidth)
+      }
+      console.log(`📐 Width: start=${startLeftWidth}, delta=${deltaX}, left=${this.leftWidth}, right=${this.rightWidth}`)
+    },
+
+    // 恢复右侧传输队列面板
+    restoreRightPanel() {
+      const dialogWidth = window.innerWidth * 0.95
+      const splitterWidth = 4
+      const leftRatio = 0.55
+      const newLeftWidth = Math.floor(dialogWidth * leftRatio)
+      const newRightWidth = dialogWidth - newLeftWidth - splitterWidth
       this.$set(this, 'leftWidth', newLeftWidth)
-      this.$set(this, 'rightWidth', dialogWidth - newLeftWidth - 4)
-      
-      console.log(`✅ Panel updated: left=${this.leftWidth}px, right=${this.rightWidth}px`)
+      this.$set(this, 'rightWidth', newRightWidth)
     },
 
     // 计算表格高度
@@ -1950,6 +1971,32 @@ export default {
 
 .ctx-menu-item i {
   margin-right: 6px;
+}
+
+/* 右侧面板隐藏时的恢复把手 */
+.restore-tab {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 48px;
+  background: #409EFF;
+  border-radius: 4px 0 0 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  z-index: 101;
+  transition: background 0.2s, width 0.2s;
+  opacity: 0.7;
+}
+.restore-tab:hover {
+  opacity: 1;
+  width: 20px;
+  background: #66b1ff;
 }
 
 /* 表格行高压缩 */
