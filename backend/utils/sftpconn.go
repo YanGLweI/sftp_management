@@ -20,7 +20,9 @@ type SFTPConnection struct {
 	SftpClient   *sftp.Client
 	SSHClient    *ssh.Client
 	CreateTime   time.Time // 连接创建时间，用于过期清理
-	Username     string    // 关联的用户名，可选
+	Username     string    // 关联的SFTP用户名（专用账号或用户账号）
+	LoginType    string    // 登录方式：password/keyfile/hotlabel/chinaunicom
+	DomainUser   string    // 域账号（hotlabel/chinaunicom 登录时的实际操作者，其他登录方式为空）
 	HomePath     string    // 连接允许访问的根路径（空表示不限制）
 	LastUsedTime time.Time // 最后使用时间
 }
@@ -139,6 +141,18 @@ func NewSFTPConnectionWithHome(user, password, homePath string) (*SFTPConnection
 		HomePath:     homePath,
 		LastUsedTime: time.Now(),
 	}, nil
+}
+
+// NewSFTPConnectionForModule 初始化SFTP连接（模块专用登录：域控验证通过后用公共账号登录，绑定根路径）
+// loginType: hotlabel/chinaunicom 等模块标识；domainUser: 通过域控验证的操作者账号
+func NewSFTPConnectionForModule(user, password, homePath, loginType, domainUser string) (*SFTPConnection, error) {
+	conn, err := NewSFTPConnectionWithHome(user, password, homePath)
+	if err != nil {
+		return nil, err
+	}
+	conn.LoginType = loginType
+	conn.DomainUser = domainUser
+	return conn, nil
 }
 
 // ResolvePath 校验并规范化请求路径，确保不超出连接允许的根路径

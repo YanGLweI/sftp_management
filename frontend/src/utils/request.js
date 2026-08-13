@@ -23,6 +23,11 @@ service.interceptors.request.use(
     }
     // 新增SFTP-Token头
     config.headers['X-SFTP-Token'] = sessionStorage.getItem("sftp_token")
+    // 双控验证凭证头（中国联通写操作使用）
+    const dualToken = sessionStorage.getItem('dual_token')
+    if (dualToken) {
+      config.headers['X-Dual-Token'] = dualToken
+    }
     return config
   },
   error => {

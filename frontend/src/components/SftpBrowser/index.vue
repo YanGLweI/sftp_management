@@ -468,12 +468,18 @@
         <el-button type="danger" @click="confirmBatchDelete" :loading="isBatchDeleting">{{ isBatchDeleting ? '删除中...' : '确 定' }}</el-button>
       </span>
     </el-dialog>
+
+    <!-- 双控验证组件（中国联通登录时启用，append-to-body 渲染到 body） -->
+    <DualVerify ref="dualVerify" :login-domain-user="loginDomainUser" />
   </el-dialog>
 </template>
 
 <script>
+import DualVerify from '@/components/DualVerify'
+
 export default {
   name: 'SftpBrowser',
+  components: { DualVerify },
   props: {
     // 用户名
     username: {
@@ -497,6 +503,16 @@ export default {
     },
     // 路径
     path: {
+      type: String,
+      default: ''
+    },
+    // 是否启用双控验证（中国联通登录时 true，写操作需另一产业部账号复核）
+    dualVerifyEnabled: {
+      type: Boolean,
+      default: false
+    },
+    // 当前登录的产业部账号（双控复核账号不得与之相同）
+    loginDomainUser: {
       type: String,
       default: ''
     },
@@ -623,6 +639,21 @@ export default {
     }
   },
   methods: {
+    // 双控验证：验证通过后设置 X-Dual-Token 请求头并返回凭证
+    // 已持有有效凭证（60秒内）时直接复用，避免同一批次操作重复弹窗
+    async requireDualVerify(actionDesc) {
+      if (!this.dualVerifyEnabled) return null
+      if (this.uploadHeaders['X-Dual-Token']) return this.uploadHeaders['X-Dual-Token']
+      const token = await this.$refs.dualVerify.verify(actionDesc)
+      this.$set(this.uploadHeaders, 'X-Dual-Token', token)
+      sessionStorage.setItem('dual_token', token)
+      return token
+    },
+    // 清除双控凭证头（单次写操作完成后调用，强制下次操作重新验证；上传批次由60秒有效期兜底，不在此清除）
+    clearDualToken() {
+      this.$delete(this.uploadHeaders, 'X-Dual-Token')
+      sessionStorage.removeItem('dual_token')
+    },
     // 初始化布局宽度
     initLayout() {
       const dialogWidth = window.innerWidth * 0.95
@@ -902,11 +933,23 @@ export default {
       return true
     },
     // 上传前检查
-    beforeUpload(file) {
+    async beforeUpload(file) {
       // 上传文件大小不能超过 5GB
       const isValid = file.size / 1024 / 1024 < 1024 * 5
-      if (!isValid) this.$message.error('不能超过 5GB')
-      return isValid
+      if (!isValid) {
+        this.$message.error('不能超过 5GB')
+        return false
+      }
+      // 中国联通会话：上传前需双控验证（同一批次多个文件只验证一次）
+      if (this.dualVerifyEnabled) {
+        try {
+          await this.requireDualVerify(`上传文件到 ${this.currentPath}`)
+          return true
+        } catch (e) {
+          return false // 取消或失败，中止上传
+        }
+      }
+      return true
     },
     // 上传成功
     handleUploadSuccess(response, file) {
@@ -955,6 +998,10 @@ export default {
     async createFolder() {
       if (!this.newFolderName) return this.$message.warning('请输入名称')
       try {
+        // 中国联通会话：创建目录前需双控验证
+        if (this.dualVerifyEnabled) {
+          await this.requireDualVerify(`创建目录 ${this.newFolderName}`)
+        }
         const res = await this.$API.sftpuser.reqSftpMkdir({
           path: this.currentPath,
           name: this.newFolderName
@@ -965,7 +1012,9 @@ export default {
           this.newFolderName = ''
           this.fetchFiles()
         }
-      } catch {}
+      } catch {} finally {
+        this.clearDualToken()
+      }
     },
     // 下载文件
     handleDownload(file) {
@@ -992,12 +1041,17 @@ export default {
     },
     async confirmDelete() {
       try {
+        // 中国联通会话：删除前需双控验证
+        if (this.dualVerifyEnabled) {
+          await this.requireDualVerify(`删除 ${this.deleteTarget.name}`)
+        }
         const res = await this.$API.sftpuser.reqSftpDelete({ path: this.deleteTarget.path })
         if (res.code === 200) {
           this.$message.success('删除成功')
           this.fetchFiles()
         }
       } catch {} finally {
+        this.clearDualToken()
         this.deleteDialogVisible = false
       }
     },
@@ -1009,6 +1063,10 @@ export default {
     async confirmRename(row) {
       if (!row.editName) return this.$message.warning('名称不能为空')
       try {
+        // 中国联通会话：重命名前需双控验证
+        if (this.dualVerifyEnabled) {
+          await this.requireDualVerify(`重命名 ${row.name} 为 ${row.editName}`)
+        }
         const res = await this.$API.sftpuser.reqSftpRename({
           oldPath: row.path,
           newName: row.editName
@@ -1017,7 +1075,9 @@ export default {
           this.$message.success('重命名成功')
           this.fetchFiles()
         }
-      } catch {}
+      } catch {} finally {
+        this.clearDualToken()
+      }
     },
     cancelRename(row) {
       row.isRenaming = false
@@ -1134,6 +1194,10 @@ export default {
       this.isBatchDeleting = true  // 开始删除时设置 loading
       
       try {
+        // 中国联通会话：批量删除前需双控验证
+        if (this.dualVerifyEnabled) {
+          await this.requireDualVerify(`批量删除 ${this.selectedFiles.length} 项`)
+        }
         const res = await this.$API.sftpuser.reqSftpBatchDelete(this.selectedFiles)
         if (res.code === 200) {
           this.$message.success('删除成功')
@@ -1145,6 +1209,7 @@ export default {
       } catch (error) {
         this.$message.error('删除失败')
       } finally {
+        this.clearDualToken()
         this.isBatchDeleting = false  // 无论成功失败都关闭 loading
         this.batchDeleteDialogVisible = false
       }
@@ -1201,7 +1266,8 @@ export default {
       
       // 子弹框打开时不参与键盘导航
       const dialogOpen = this.showCreateFolderDialog || this.deleteDialogVisible ||
-        this.batchDeleteDialogVisible || this.showDeepSearchDialog || this.deepSearchDeleteDialogVisible
+        this.batchDeleteDialogVisible || this.showDeepSearchDialog || this.deepSearchDeleteDialogVisible ||
+        (this.$refs.dualVerify && this.$refs.dualVerify.dialogVisible)
 
       // 方向键上下移动焦点
       if (!dialogOpen && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1302,6 +1368,15 @@ export default {
       if (this.isUploading) {
         this.$message.warning('正在上传中，请稍后再试')
         return
+      }
+
+      // 中国联通会话：拖拽上传前需双控验证（批次一次）
+      if (this.dualVerifyEnabled) {
+        try {
+          await this.requireDualVerify(`上传 ${files.length} 个文件到 ${this.currentPath}`)
+        } catch (e) {
+          return // 取消或失败，中止上传
+        }
       }
 
       // 文件大小预检（不能超过5GB）
@@ -1443,7 +1518,15 @@ export default {
     },
     // 并发调度：最多 3 路并发，其余排队；完成后自动补位
     // onlyId 参数：单条目模式（选定上传），只上传指定条目，完成后不自动补位其他条目
-    pumpUploads(onlyId) {
+    async pumpUploads(onlyId) {
+      // 中国联通会话：队列上传前需双控验证（批次一次，60秒凭证供并发3路复用）
+      if (this.dualVerifyEnabled) {
+        try {
+          await this.requireDualVerify('上传队列文件到 SFTP')
+        } catch (e) {
+          return // 取消或失败，中止上传
+        }
+      }
       const singleMode = onlyId !== undefined
       while (this.uploadingCount < 3) {
         const entry = singleMode
@@ -1612,6 +1695,10 @@ export default {
     async confirmDeepSearchRename(row) {
       if (!row.editName) return this.$message.warning('名称不能为空')
       try {
+        // 中国联通会话：重命名前需双控验证
+        if (this.dualVerifyEnabled) {
+          await this.requireDualVerify(`重命名 ${row.name} 为 ${row.editName}`)
+        }
         const res = await this.$API.sftpuser.reqSftpRename({
           oldPath: row.path,
           newName: row.editName
@@ -1620,7 +1707,9 @@ export default {
           this.$message.success('重命名成功')
           this.doDeepSearch()
         }
-      } catch {} 
+      } catch {} finally {
+        this.clearDualToken()
+      }
     },
     // 搜索结果中取消重命名
     cancelDeepSearchRename(row) {
@@ -1634,12 +1723,17 @@ export default {
     // 确认搜索结果中的删除
     async confirmDeepSearchDelete() {
       try {
+        // 中国联通会话：删除前需双控验证
+        if (this.dualVerifyEnabled) {
+          await this.requireDualVerify(`删除 ${this.deepSearchDeleteTarget.name}`)
+        }
         const res = await this.$API.sftpuser.reqSftpDelete({ path: this.deepSearchDeleteTarget.path })
         if (res.code === 200) {
           this.$message.success('删除成功')
           this.doDeepSearch()
         }
       } catch {} finally {
+        this.clearDualToken()
         this.deepSearchDeleteDialogVisible = false
       }
     },

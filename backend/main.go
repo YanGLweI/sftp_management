@@ -27,6 +27,7 @@ func main() {
 	// 数据库表结构迁移
 	err = dao.DB.AutoMigrate(
 		&models.Log{},
+		&models.SftpLog{},
 		&models.SftpUsers{},
 		&models.Contact{},
 		&models.UpdateMain{},
@@ -47,6 +48,9 @@ func main() {
 
 	// 启动过期连接清理（8小时未使用则清理）
 	go utils.SFTPConnManager.CleanExpiredConns(8 * time.Hour)
+
+	// 启动双控凭证过期清理
+	go utils.DualAuthManager.CleanExpiredTokens()
 
 	// 设置路由
 	r := routers.SetupRouter()

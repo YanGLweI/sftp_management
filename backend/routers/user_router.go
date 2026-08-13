@@ -33,6 +33,8 @@ func registerUserRouter(r *gin.Engine) {
 		userGroup.GET("/log/:page/:limit", controller.GetLogList)
 		// ! sftp 传输日志
 		userGroup.GET("/log/sftplog/:date", controller.GetSftpLog)
+		// ! SFTP登录与操作日志：/log/sftploglist/:page/:limit?datetime=string&username=string
+		userGroup.GET("/log/sftploglist/:page/:limit", controller.GetSftpLogList)
 		// ! 下载私钥 /download-key/:username
 		userGroup.GET("/download-key/:username", controller.DownloadPrivateKey)
 	}

@@ -58,16 +58,16 @@ type JWTConfig struct {
 
 // LDAPConfig结构体用于存储LDAP相关配置信息
 type LDAPConfig struct {
-	Server             string `yaml:"server"`
-	BaseDN             string `yaml:"base_dn"`
-	UseTLS             bool   `yaml:"use_tls"`
-	Insecure           bool   `yaml:"insecure"`
-	UserFilter         string `yaml:"user_filter"`
-	Username           string `yaml:"username"`
-	Password           string `yaml:"password"`
-	SecurityGroupDN    string `yaml:"security_group_dn"`        // 平台登录安全组
-	SftpSecurityGroupDN string `yaml:"sftp_security_group_dn"`  // SFTP相关模块安全组（标签上传等），后续SFTP模块可通用
-	CertPath           string `yaml:"cert_path"`                // 可选，客户端证书路径
+	Server              string `yaml:"server"`
+	BaseDN              string `yaml:"base_dn"`
+	UseTLS              bool   `yaml:"use_tls"`
+	Insecure            bool   `yaml:"insecure"`
+	UserFilter          string `yaml:"user_filter"`
+	Username            string `yaml:"username"`
+	Password            string `yaml:"password"`
+	SecurityGroupDN     string `yaml:"security_group_dn"`      // 平台登录安全组
+	SftpSecurityGroupDN string `yaml:"sftp_security_group_dn"` // SFTP相关模块安全组（标签上传等），后续SFTP模块可通用
+	CertPath            string `yaml:"cert_path"`              // 可选，客户端证书路径
 }
 
 // 脚本路径
@@ -105,13 +105,20 @@ type LocalUserConf struct {
 	Password string `yaml:"password"`
 }
 
-// HotLabelConfig 标签上传模块配置
-// 安全组DN统一配置在 ldap.sftp_security_group_dn，此处不重复
-// 仅配置标签上传专用SFTP账号与允许访问的根路径
-type HotLabelConfig struct {
-	SFTPUsername string `yaml:"sftp_username"` // 标签上传专用SFTP账号
+// SftpAccountConfig 公共SFTP服务账号配置（标签上传、中国联通等模块共用，后续模块可复用）
+type SftpAccountConfig struct {
+	SFTPUsername string `yaml:"sftp_username"` // 专用SFTP账号
 	SFTPPassword string `yaml:"sftp_password"` // SFTP账号密码（支持 ENC[] 加密）
-	RootPath     string `yaml:"root_path"`     // 标签上传允许访问的根路径
+}
+
+// HotLabelConfig 标签上传模块配置（仅配置允许访问的根路径，SFTP账号复用公共 sftp_account）
+type HotLabelConfig struct {
+	RootPath string `yaml:"root_path"` // 标签上传允许访问的根路径
+}
+
+// ChinaUnicomConfig 中国联通模块配置（仅配置允许访问的根路径，SFTP账号复用公共 sftp_account）
+type ChinaUnicomConfig struct {
+	RootPath string `yaml:"root_path"` // 中国联通允许访问的根路径
 }
 
 // 计划任务配置
@@ -129,17 +136,19 @@ type SchedulerConfig struct {
 
 // Config结构体用于整体存储配置信息，包含系统和数据库配置
 type Config struct {
-	System    SystemConfig    `yaml:"system"`
-	Database  DatabaseConfig  `yaml:"database"`
-	Email     EmailConfig     `yaml:"email"`
-	JWT       JWTConfig       `yaml:"jwt"`
-	LDAP      LDAPConfig      `yaml:"ldap"`
-	Script    ScriptPath      `yaml:"script"`
-	LogFiles  LogFiles        `yaml:"logfiles"`
-	SFTP      SFTPConfig      `yaml:"sftp"`
-	LocalUser LocalUserConf   `yaml:"localuser"`
-	HotLabel  HotLabelConfig  `yaml:"hotlabel"`
-	Scheduler SchedulerConfig `yaml:"scheduler"`
+	System      SystemConfig      `yaml:"system"`
+	Database    DatabaseConfig    `yaml:"database"`
+	Email       EmailConfig       `yaml:"email"`
+	JWT         JWTConfig         `yaml:"jwt"`
+	LDAP        LDAPConfig        `yaml:"ldap"`
+	Script      ScriptPath        `yaml:"script"`
+	LogFiles    LogFiles          `yaml:"logfiles"`
+	SFTP        SFTPConfig        `yaml:"sftp"`
+	LocalUser   LocalUserConf     `yaml:"localuser"`
+	SftpAccount SftpAccountConfig `yaml:"sftp_account"` // 公共SFTP服务账号
+	HotLabel    HotLabelConfig    `yaml:"hotlabel"`
+	ChinaUnicom ChinaUnicomConfig `yaml:"chinaunicom"`
+	Scheduler   SchedulerConfig   `yaml:"scheduler"`
 }
 
 var (

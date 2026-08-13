@@ -32,6 +32,9 @@ export const reqLogList = (page,limit,searchObj) => request({url:`/user/log/${pa
 // ! 获取传输日志 /user/log/sftplog/{date} get
 export const reqSftpLog = (date) => request({url:`/user/log/sftplog/${date}`,method:'get'})
 
+// ! 获取SFTP登录与操作日志 /user/log/sftploglist/{page}/{limit} get
+export const reqSftpLogList = (page,limit,searchObj) => request({url:`/user/log/sftploglist/${page}/${limit}`,method:'get',params:searchObj})
+
 // ? SFTP传输模块
 // ! 登录sftp /sftp/login post
 export const reqSftpLogin = (data) => request({url:'/sftp/login',method:'post',data})
@@ -62,3 +65,6 @@ export const reqSftpBatchDelete = (data) => request({url:'/sftp/batchdelete',met
 
 // ! 递归搜索文件或目录 /sftp/search get
 export const reqSftpSearch = (params) => request({url:'/sftp/search',method:'get',params})
+
+// ! 双控验证 /sftp/dualverify post（请求头 X-SFTP-Token）
+export const reqSftpDualVerify = (data) => request({url:'/sftp/dualverify',method:'post',data})

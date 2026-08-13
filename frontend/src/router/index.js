@@ -96,16 +96,32 @@ export const constantRoutes = [
         meta: { title: '账号管理' },
       },
       {
-        path: 'sftplog',
-        name: 'SftpLog',
-        component: () => import('@/views/sftp/Sftplog'),
-        meta: { title: '日志管理' },
-      },
-      {
         path: 'contacts',
         name: 'Contacts',
         component: () => import('@/views/sftp/Contacts'),
         meta: { title: '通讯邮箱' },
+      },
+    ],
+  },
+  // ! 日志管理（1级菜单：平台日志 + SFTP日志）
+  {
+    path: '/log',
+    component: Layout,
+    name: 'Log',
+    meta: { title: '日志管理', icon: 'el-icon-tickets' },
+    redirect: '/log/platformlog',
+    children: [
+      {
+        path: 'platformlog',
+        name: 'PlatformLog',
+        component: () => import('@/views/sftp/Sftplog'),
+        meta: { title: '平台日志' },
+      },
+      {
+        path: 'sftplog',
+        name: 'SftpLog',
+        component: () => import('@/views/log/SftpLog'),
+        meta: { title: 'SFTP日志' },
       },
     ],
   },

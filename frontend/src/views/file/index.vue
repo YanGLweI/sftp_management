@@ -72,6 +72,24 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
+        <el-tab-pane label="中国联通" name="chinaunicom">
+          <el-form :model="SftpForm" label-position="top">
+            <el-form-item label="域账号" :label-width="SftpFormLabelWidth">
+              <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
+            </el-form-item>
+            <el-form-item label="域密码" :label-width="SftpFormLabelWidth">
+              <el-input
+                ref="unicomLabel"
+                v-model="SftpForm.password"
+                autocomplete="off"
+                type="password"
+                show-password
+                v-focus="SftpDialogFormVisible"
+                @keyup.enter.native="sftplogin()"
+              ></el-input>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
       </el-tabs>
       <div class="dialog-footer apple-footer">
         <el-button @click="closeSftpDialogForm()">取 消</el-button>
@@ -89,6 +107,8 @@
       :username="SftpForm.username"
       :visible="SftpBrowserVisible"
       :upload-headers="uploadHeaders"
+      :dual-verify-enabled="activeName === 'chinaunicom'"
+      :login-domain-user="SftpForm.username"
       upload-url="/dev-api/sftp/upload"
       @close="closeSftpBrowser"
     />
@@ -227,18 +247,18 @@ export default {
           this.SftpDialogFormVisible = false
           this.buttonLoading = false
         }
-      } else if (this.activeName == 'hotlabel') {
-        // 标签上传：提交域账号密码，由后端域控验证（ldap.sftp_security_group_dn）通过后读取配置用专用账号登录
+      } else if (this.activeName == 'hotlabel' || this.activeName == 'chinaunicom') {
+        // 标签上传/中国联通：提交域账号密码，由后端域控验证（ldap.sftp_security_group_dn）通过后读取公共账号登录并绑定模块根路径
         const { username, password } = this.SftpForm
         const rsaPassword = rsaEncrypt(password)
         if (!username || !password) return this.$message.warning('请输入域账号密码')
         this.buttonLoading = true
         try {
-          const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword, loginType: 'hotlabel' })
+          const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword, loginType: this.activeName })
           if (res.code == 200) {
             sessionStorage.setItem("sftp_token", res.data.sftp_token)
             this.uploadHeaders['X-SFTP-Token'] = res.data.sftp_token
-            this.path = "/hotlabel"
+            this.path = this.activeName == 'hotlabel' ? '/hotlabel' : '/ChinaUnicom'
             this.$message.success('SFTP登录成功')
             this.SftpBrowserVisible = true
           }
@@ -296,8 +316,12 @@ export default {
         password: '',
       }
       this.path = ''
-      if (this.activeName == 'hotlabel') {
-        this.$refs.label.focus()
+      if (this.activeName == 'hotlabel' || this.activeName == 'chinaunicom') {
+        if (this.activeName == 'hotlabel') {
+          this.$refs.label.focus()
+        } else {
+          this.$refs.unicomLabel.focus()
+        }
         return
       }
       try {
@@ -314,6 +338,8 @@ export default {
           this.$refs.keyUsername.focus()
         } else if (this.activeName === 'hotlabel') {
           this.$refs.label.focus()
+        } else if (this.activeName === 'chinaunicom') {
+          this.$refs.unicomLabel.focus()
         } else {
           this.$refs.username.focus()
         }
@@ -324,6 +350,8 @@ export default {
         tab.name === 'password' ? this.$refs.username.focus() : this.$refs.keyUsername.focus()
         if (tab.name === 'hotlabel') {
           this.$refs.label.focus()
+        }else if (tab.name === 'chinaunicom') {
+          this.$refs.unicomLabel.focus()
         }else{
           this.SftpForm = {
             username: '',
