@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"path/filepath"
 	"sftpbackend/config"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ type SFTPConnection struct {
 	SSHClient    *ssh.Client
 	CreateTime   time.Time // 连接创建时间，用于过期清理
 	Username     string    // 关联的用户名，可选
+	HomePath     string    // 连接允许访问的根路径（空表示不限制）
 	LastUsedTime time.Time // 最后使用时间
 }
 
@@ -103,8 +105,14 @@ func (m *sftpConnManager) CleanExpiredConns(expireTime time.Duration) {
 	}
 }
 
-// ! 初始化SFTP连接（密码登录）
+// ! 初始化SFTP连接（密码登录，不限制访问路径）
 func NewSFTPConnection(user, password string) (*SFTPConnection, error) {
+	return NewSFTPConnectionWithHome(user, password, "")
+}
+
+// ! 初始化SFTP连接（密码登录，可指定允许访问的根路径）
+// homePath 为空表示不限制路径
+func NewSFTPConnectionWithHome(user, password, homePath string) (*SFTPConnection, error) {
 	conf := config.GlobalConfig.SFTP
 	sshConfig := &ssh.ClientConfig{
 		User:            user,
@@ -128,8 +136,23 @@ func NewSFTPConnection(user, password string) (*SFTPConnection, error) {
 		SSHClient:    sshClient,
 		CreateTime:   time.Now(),
 		Username:     user,
+		HomePath:     homePath,
 		LastUsedTime: time.Now(),
 	}, nil
+}
+
+// ResolvePath 校验并规范化请求路径，确保不超出连接允许的根路径
+// filepath.Clean 处理 ".." 穿越与重复斜杠（如 /hotlabel/../.. Clean 后为 /，前缀校验拒绝）
+func (conn *SFTPConnection) ResolvePath(requestPath string) (string, error) {
+	cleaned := filepath.Clean(requestPath)
+	if conn.HomePath == "" {
+		return cleaned, nil // 普通连接不限制
+	}
+	home := filepath.Clean(conn.HomePath)
+	if cleaned == home || strings.HasPrefix(cleaned, home+string(filepath.Separator)) {
+		return cleaned, nil
+	}
+	return "", fmt.Errorf("路径超出允许范围: %s", requestPath)
 }
 
 // ! 初始化SFTP连接（密钥登录）

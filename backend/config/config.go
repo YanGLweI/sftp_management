@@ -58,15 +58,16 @@ type JWTConfig struct {
 
 // LDAPConfig结构体用于存储LDAP相关配置信息
 type LDAPConfig struct {
-	Server          string `yaml:"server"`
-	BaseDN          string `yaml:"base_dn"`
-	UseTLS          bool   `yaml:"use_tls"`
-	Insecure        bool   `yaml:"insecure"`
-	UserFilter      string `yaml:"user_filter"`
-	Username        string `yaml:"username"`
-	Password        string `yaml:"password"`
-	SecurityGroupDN string `yaml:"security_group_dn"` // 可选，LDAP安全组DN
-	CertPath        string `yaml:"cert_path"`         // 可选，客户端证书路径
+	Server             string `yaml:"server"`
+	BaseDN             string `yaml:"base_dn"`
+	UseTLS             bool   `yaml:"use_tls"`
+	Insecure           bool   `yaml:"insecure"`
+	UserFilter         string `yaml:"user_filter"`
+	Username           string `yaml:"username"`
+	Password           string `yaml:"password"`
+	SecurityGroupDN    string `yaml:"security_group_dn"`        // 平台登录安全组
+	SftpSecurityGroupDN string `yaml:"sftp_security_group_dn"`  // SFTP相关模块安全组（标签上传等），后续SFTP模块可通用
+	CertPath           string `yaml:"cert_path"`                // 可选，客户端证书路径
 }
 
 // 脚本路径
@@ -104,6 +105,15 @@ type LocalUserConf struct {
 	Password string `yaml:"password"`
 }
 
+// HotLabelConfig 标签上传模块配置
+// 安全组DN统一配置在 ldap.sftp_security_group_dn，此处不重复
+// 仅配置标签上传专用SFTP账号与允许访问的根路径
+type HotLabelConfig struct {
+	SFTPUsername string `yaml:"sftp_username"` // 标签上传专用SFTP账号
+	SFTPPassword string `yaml:"sftp_password"` // SFTP账号密码（支持 ENC[] 加密）
+	RootPath     string `yaml:"root_path"`     // 标签上传允许访问的根路径
+}
+
 // 计划任务配置
 type SchedulerConfig struct {
 	KReportTime      string `yaml:"k_report_time"`
@@ -128,6 +138,7 @@ type Config struct {
 	LogFiles  LogFiles        `yaml:"logfiles"`
 	SFTP      SFTPConfig      `yaml:"sftp"`
 	LocalUser LocalUserConf   `yaml:"localuser"`
+	HotLabel  HotLabelConfig  `yaml:"hotlabel"`
 	Scheduler SchedulerConfig `yaml:"scheduler"`
 }
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sftpbackend/config"
 	"sftpbackend/models"
 	"sftpbackend/tools"
 	"sftpbackend/utils"
@@ -104,14 +105,39 @@ func LoginSFTP(c *gin.Context) {
 			return
 		}
 
-		// 创建连接实例
-		conn, err = utils.NewSFTPConnection(sftpLogin.Username, decryptedPassword)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"code":    500,
-				"message": "<密码错误> " + err.Error(),
-			})
-			return
+		// 标签上传模块：域控验证（安全组 ldap.sftp_security_group_dn）通过后，读取配置用SFTP账号登录
+		if sftpLogin.LoginType == "hotlabel" {
+			// 1. LDAP 验证域账号 + 安全组成员身份
+			_, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(
+				sftpLogin.Username, decryptedPassword, config.GlobalConfig.LDAP.SftpSecurityGroupDN)
+			if ldapErr != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"code":    statusCode,
+					"message": "域控验证失败: " + ldapErr.Error(),
+				})
+				return
+			}
+
+			// 2. 读取配置文件中的专用SFTP账号建立连接，绑定根路径限制
+			hl := config.GlobalConfig.HotLabel
+			conn, err = utils.NewSFTPConnectionWithHome(hl.SFTPUsername, hl.SFTPPassword, hl.RootPath)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"code":    500,
+					"message": "标签上传专用账号连接失败: " + err.Error(),
+				})
+				return
+			}
+		} else {
+			// 普通密码登录：创建连接实例
+			conn, err = utils.NewSFTPConnection(sftpLogin.Username, decryptedPassword)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"code":    500,
+					"message": "<密码错误> " + err.Error(),
+				})
+				return
+			}
 		}
 	}
 
@@ -181,6 +207,16 @@ func GetFiles(c *gin.Context) {
 	path := c.Query("path")
 	if path == "" {
 		path = "/"
+	}
+
+	// 校验路径不超出连接允许的根路径
+	path, err = conn.ResolvePath(path)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": err.Error(),
+		})
+		return
 	}
 
 	files, err := conn.SftpClient.ReadDir(path)
@@ -307,6 +343,15 @@ func UploadFile(c *gin.Context) {
 				return
 			}
 			targetPath = string(data)
+			// 校验目标路径不超出连接允许的根路径
+			targetPath, err = conn.ResolvePath(targetPath)
+			if err != nil {
+				c.JSON(http.StatusForbidden, gin.H{
+					"code":    403,
+					"message": err.Error(),
+				})
+				return
+			}
 		case "file":
 			if targetPath == "" {
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -400,6 +445,16 @@ func CreateFolder(c *gin.Context) {
 		return
 	}
 
+	// 校验路径不超出连接允许的根路径
+	req.Path, err = conn.ResolvePath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": err.Error(),
+		})
+		return
+	}
+
 	if err := conn.CreateFolder(req.Path, req.Name); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
@@ -442,6 +497,16 @@ func DownloadFile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
 			"message": "文件路径不能为空",
+		})
+		return
+	}
+
+	// 校验路径不超出连接允许的根路径
+	filePath, err = conn.ResolvePath(filePath)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": err.Error(),
 		})
 		return
 	}
@@ -560,6 +625,16 @@ func DeletePath(c *gin.Context) {
 		return
 	}
 
+	// 校验路径不超出连接允许的根路径
+	req.Path, err = conn.ResolvePath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": err.Error(),
+		})
+		return
+	}
+
 	fileInfo, err := conn.SftpClient.Stat(req.Path)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
@@ -640,6 +715,15 @@ func BatchDelete(c *gin.Context) {
 
 	for _, file := range req {
 		path := file.Path
+		// 校验路径不超出连接允许的根路径，任一越界整体拒绝
+		path, err = conn.ResolvePath(path)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"code":    403,
+				"message": err.Error(),
+			})
+			return
+		}
 		fileInfo, err := conn.SftpClient.Stat(path)
 
 		// 路径不存在：记录错误，继续下一个
@@ -774,6 +858,16 @@ func RenamePath(c *gin.Context) {
 		return
 	}
 
+	// 校验原路径不超出连接允许的根路径
+	req.OldPath, err = conn.ResolvePath(req.OldPath)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": err.Error(),
+		})
+		return
+	}
+
 	oldDir := filepath.Dir(req.OldPath)
 	newPath := filepath.Join(oldDir, req.NewName)
 
@@ -819,6 +913,16 @@ func DownloadDirectory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
 			"message": "目录路径不能为空",
+		})
+		return
+	}
+
+	// 校验路径不超出连接允许的根路径
+	remoteDir, err = conn.ResolvePath(remoteDir)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": err.Error(),
 		})
 		return
 	}
@@ -952,6 +1056,16 @@ func SearchFiles(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
 			"message": "搜索关键字不能为空",
+		})
+		return
+	}
+
+	// 校验路径不超出连接允许的根路径
+	searchPath, err = conn.ResolvePath(searchPath)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": err.Error(),
 		})
 		return
 	}

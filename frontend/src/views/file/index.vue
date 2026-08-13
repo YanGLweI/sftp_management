@@ -56,10 +56,10 @@
         </el-tab-pane>
         <el-tab-pane label="标签上传" name="hotlabel">
           <el-form :model="SftpForm" label-position="top">
-            <el-form-item label="SFTP账号" :label-width="SftpFormLabelWidth">
-              <el-input v-model="SftpForm.username" autocomplete="off" disabled></el-input>
+            <el-form-item label="域账号" :label-width="SftpFormLabelWidth">
+              <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
             </el-form-item>
-            <el-form-item label="SFTP密码" :label-width="SftpFormLabelWidth">
+            <el-form-item label="域密码" :label-width="SftpFormLabelWidth">
               <el-input
                 ref="label"
                 v-model="SftpForm.password"
@@ -228,24 +228,19 @@ export default {
           this.buttonLoading = false
         }
       } else if (this.activeName == 'hotlabel') {
+        // 标签上传：提交域账号密码，由后端域控验证（ldap.sftp_security_group_dn）通过后读取配置用专用账号登录
         const { username, password } = this.SftpForm
         const rsaPassword = rsaEncrypt(password)
-        if (!username || !password) return this.$message.warning('请输入账号密码')
+        if (!username || !password) return this.$message.warning('请输入域账号密码')
         this.buttonLoading = true
         try {
-          const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword })
+          const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword, loginType: 'hotlabel' })
           if (res.code == 200) {
-            this.SftpForm.username = 'HotLabel'
-            const {VUE_APP_HotLabel_Username,VUE_APP_HotLabel_Password} = process.env
-            const rsaPassword = rsaEncrypt(VUE_APP_HotLabel_Password)
-            const result = await this.$API.sftpuser.reqSftpLogin({ username: VUE_APP_HotLabel_Username, password: rsaPassword })
-            if (result.code == 200) {
-              sessionStorage.setItem("sftp_token", result.data.sftp_token)
-              this.uploadHeaders['X-SFTP-Token'] = result.data.sftp_token
-              this.path = "/hotlabel"
-              this.$message.success('SFTP登录成功')
-              this.SftpBrowserVisible = true
-            }
+            sessionStorage.setItem("sftp_token", res.data.sftp_token)
+            this.uploadHeaders['X-SFTP-Token'] = res.data.sftp_token
+            this.path = "/hotlabel"
+            this.$message.success('SFTP登录成功')
+            this.SftpBrowserVisible = true
           }
         } catch {} finally {
           this.SftpDialogFormVisible = false
@@ -302,7 +297,6 @@ export default {
       }
       this.path = ''
       if (this.activeName == 'hotlabel') {
-        this.SftpForm.username = 'HotData'
         this.$refs.label.focus()
         return
       }
@@ -329,7 +323,6 @@ export default {
       this.$nextTick(() => {
         tab.name === 'password' ? this.$refs.username.focus() : this.$refs.keyUsername.focus()
         if (tab.name === 'hotlabel') {
-          this.SftpForm.username = 'HotData'
           this.$refs.label.focus()
         }else{
           this.SftpForm = {

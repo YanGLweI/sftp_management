@@ -2,8 +2,9 @@ package models
 
 // SFTPUser结构体用于存储SFTP用户信息
 type SFTPLogin struct {
-	Username string `json:"username"` // 用户名
-	Password string `json:"password"` // 密码
+	Username  string `json:"username"`  // 用户名
+	Password  string `json:"password"`  // 密码
+	LoginType string `json:"loginType"` // 登录模块标识，值为 "hotlabel" 时走标签上传域控验证流程
 }
 
 // 文件信息结构体

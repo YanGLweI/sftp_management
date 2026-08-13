@@ -15,17 +15,33 @@ import (
 	"github.com/msteinert/pam"
 )
 
+// AuthenticateLDAP 通过LDAP验证用户的用户名和密码（平台登录，使用 ldap.security_group_dn 安全组）
+// 参数：
+//
+//	username - 用户名
+//	password - 密码
+//
+// 返回：
+//
+//	userAttributes - 用户属性  "cn", "WhenChanged", "memberOf"
+//	statusCode - 状态码
+//	error - 错误信息
+func AuthenticateLDAP(username, password string) (map[string][]string, int, error) {
+	return AuthenticateLDAPWithGroup(username, password, config.GlobalConfig.LDAP.SecurityGroupDN)
+}
+
 /*
-* AuthenticateLDAP 函数用于通过LDAP验证用户的用户名和密码
+* AuthenticateLDAPWithGroup 函数用于通过LDAP验证用户的用户名和密码，并校验其属于指定安全组
 * 参数：
 * @param username 用户名
 * @param password 密码
+* @param securityGroupDN 允许的安全组DN（如 ldap.sftp_security_group_dn），后续SFTP模块可通用
 * 返回：
 * @return userAttributes 用户属性  "cn", "WhenChanged", "memberOf"
 * @return statusCode 状态码
 * @return error 错误信息
  */
-func AuthenticateLDAP(username, password string) (map[string][]string, int, error) {
+func AuthenticateLDAPWithGroup(username, password, securityGroupDN string) (map[string][]string, int, error) {
 	// 从配置文件中获取LDAP信息
 	config := config.GlobalConfig.LDAP
 	// 创建LDAP连接
@@ -103,7 +119,7 @@ func AuthenticateLDAP(username, password string) (map[string][]string, int, erro
 
 	// 认证成功，检查用户是否属于指定的安全组
 	userGroups := sr.Entries[0].GetAttributeValues("memberOf")
-	isMember := slices.Contains(userGroups, config.SecurityGroupDN)
+	isMember := slices.Contains(userGroups, securityGroupDN)
 
 	if !isMember {
 		return nil, 403, fmt.Errorf("用户不属于授权组，拒绝访问。")
