@@ -185,9 +185,32 @@ export const constantRoutes = [
       },
     ],
   },
+  // ! SFTP 管理（新增）
+  {
+    path: '/sftp-module',
+    component: Layout,
+    name: 'SftpModuleManagement',
+    meta: { title: 'SFTP 管理', icon: 'el-icon-cpu' },
+    alwaysShow: true,
+    redirect: '/sftp-module/hotlabel-config',
+    children: [
+      {
+        path: 'hotlabel-config',
+        name: 'HotLabelConfig',
+        component: () => import('@/views/admin/hotlabel-config/index.vue'),
+        meta: { title: '标签上传配置' },
+      },
+      {
+        path: 'chinaunicom-config',
+        name: 'ChinaUnicomConfig',
+        component: () => import('@/views/admin/chinaunicom-config/index.vue'),
+        meta: { title: '中国联通配置' },
+      },
+    ],
+  },
 ]
 
-// ! 异步路由:不同的用户(角色),需要过滤筛选出的路由
+// ! 异步路由：不同的用户 (角色), 需要过滤筛选出的路由
 export const asyncRoutes = [
   // ! 权限管理
   /* {

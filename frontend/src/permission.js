@@ -16,10 +16,12 @@ const whiteList = ['/login', '/file', '/404'] // no redirect whitelist
 const isFileRoute = path => path === '/file' || path.startsWith('/file/')
 
 // 校验当前目标路由是否有权限访问
-// routes 为空时放行（兼容旧Token/异常态，避免锁死）
+// routes 为空时放行（兼容旧 Token/异常态，避免锁死）
 const hasRoutePermission = (to, routes) => {
   if (!routes || routes.length === 0) return true
   if (whiteList.indexOf(to.path) !== -1) return true
+  // /file 是特殊路由（SFTP 登录页），允许已登录用户直接访问
+  if (to.path === '/file' || to.path.startsWith('/file/')) return true
   // 取 matched 中最后一个非 hidden 的路由名作为校验目标
   const matched = to.matched || []
   for (let i = matched.length - 1; i >= 0; i--) {

@@ -62,6 +62,11 @@ func GetRoleByLDAPGroupDN(groupDN string) (*Role, error) {
 	return GetRoleByID(link.RoleID)
 }
 
+// GetAllRoleLDAPGroups 获取所有角色的 LDAP 安全组关联（用于登录时角色匹配）
+func GetAllRoleLDAPGroups(links *[]RoleLDAPGroup) error {
+	return dao.DB.Find(links).Error
+}
+
 // GetRoleSelect 获取角色下拉列表
 func GetRoleSelect() ([]Role, error) {
 	var roles []Role

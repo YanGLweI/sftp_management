@@ -106,36 +106,104 @@ func LoginSFTP(c *gin.Context) {
 			return
 		}
 
-		// 标签上传/中国联通模块：域控验证（安全组 ldap.sftp_security_group_dn）通过后，读取公共SFTP账号登录并绑定模块根路径
+		// 标签上传/中国联通模块：根据数据库配置决定登录方式（本地/LDAP），并校验角色权限
 		if sftpLogin.LoginType == "hotlabel" || sftpLogin.LoginType == "chinaunicom" {
-			// 1. LDAP 验证域账号 + 安全组成员身份
-			_, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(
-				sftpLogin.Username, decryptedPassword, config.GlobalConfig.LDAP.SftpSecurityGroupDN)
-			if ldapErr != nil {
-				recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 域控验证失败: "+ldapErr.Error(), "", "")
-				c.JSON(http.StatusOK, gin.H{
-					"code":    statusCode,
-					"message": "域控验证失败: " + ldapErr.Error(),
-				})
-				return
+			// 获取该模块的配置（登录方式 + 可登录角色）
+			moduleConfig, cfgErr := models.GetSFTPModuleConfig(sftpLogin.LoginType)
+			loginType := models.LoginTypeLDAP // 配置不存在时默认 LDAP（向后兼容）
+			if cfgErr == nil && moduleConfig != nil {
+				loginType = moduleConfig.LoginType
 			}
 
-			// 2. 读取公共SFTP账号建立连接，绑定模块根路径限制
-			account := config.GlobalConfig.SftpAccount
-			var rootPath string
-			if sftpLogin.LoginType == "hotlabel" {
-				rootPath = config.GlobalConfig.HotLabel.RootPath
+			if loginType == models.LoginTypeLDAP {
+				// LDAP 域控验证（安全组 ldap.sftp_security_group_dn）通过后，读取公共SFTP账号登录并绑定模块根路径
+				// 1. LDAP 验证域账号 + 安全组成员身份
+				ldapUserInfo, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(
+					sftpLogin.Username, decryptedPassword, config.GlobalConfig.LDAP.SftpSecurityGroupDN)
+				if ldapErr != nil {
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 域控验证失败: "+ldapErr.Error(), "", "")
+					c.JSON(http.StatusOK, gin.H{
+						"code":    statusCode,
+						"message": "域控验证失败: " + ldapErr.Error(),
+					})
+					return
+				}
+
+				// 1.5 角色白名单校验：域账号的安全组（memberOf）匹配角色，检查角色是否在模块 enabled_roles 中
+				if moduleConfig != nil && !CheckLDAPRolePermission(ldapUserInfo["memberOf"], sftpLogin.LoginType) {
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 角色无权限", "", "")
+					c.JSON(http.StatusForbidden, gin.H{
+						"code":    403,
+						"message": "您的角色无权登录该模块",
+					})
+					return
+				}
+
+				// 2. 读取公共SFTP账号建立连接，绑定模块根路径限制
+				account := config.GlobalConfig.SftpAccount
+				var rootPath string
+				if sftpLogin.LoginType == "hotlabel" {
+					rootPath = config.GlobalConfig.HotLabel.RootPath
+				} else {
+					rootPath = config.GlobalConfig.ChinaUnicom.RootPath
+				}
+				conn, err = utils.NewSFTPConnectionForModule(account.SFTPUsername, account.SFTPPassword, rootPath, sftpLogin.LoginType, sftpLogin.Username)
+				if err != nil {
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 专用账号连接失败: "+err.Error(), "", "")
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"code":    500,
+						"message": "专用账号连接失败: " + err.Error(),
+					})
+					return
+				}
 			} else {
-				rootPath = config.GlobalConfig.ChinaUnicom.RootPath
-			}
-			conn, err = utils.NewSFTPConnectionForModule(account.SFTPUsername, account.SFTPPassword, rootPath, sftpLogin.LoginType, sftpLogin.Username)
-			if err != nil {
-				recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 专用账号连接失败: "+err.Error(), "", "")
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"code":    500,
-					"message": "专用账号连接失败: " + err.Error(),
-				})
-				return
+				// 本地登录：平台本地账号验证 → 公共SFTP账号连接并绑定模块根路径
+				// 1. 平台本地账号验证（启用状态、bcrypt密码、失败锁定、密码过期检查）
+				localUser, expired, localErr := models.AuthenticateLocal(sftpLogin.Username, decryptedPassword)
+				if localErr != nil {
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 本地账号验证失败: "+localErr.Error(), "", "")
+					c.JSON(http.StatusOK, gin.H{
+						"code":    400,
+						"message": "本地账号验证失败: " + localErr.Error(),
+					})
+					return
+				}
+				if expired {
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 密码已过期", "", "")
+					c.JSON(http.StatusOK, gin.H{
+						"code":    400,
+						"message": "密码已过期，请先在平台修改密码",
+					})
+					return
+				}
+
+				// 2. 角色白名单校验：平台本地账号的角色必须在模块 enabled_roles 中
+				if moduleConfig != nil && (localUser.RoleID == nil || !CheckRolePermission(*localUser.RoleID, sftpLogin.LoginType)) {
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 角色无权限", "", "")
+					c.JSON(http.StatusForbidden, gin.H{
+						"code":    403,
+						"message": "您的角色无权登录该模块",
+					})
+					return
+				}
+
+				// 3. 公共SFTP账号连接，绑定模块根路径，DomainUser = 平台账号
+				account := config.GlobalConfig.SftpAccount
+				var rootPath string
+				if sftpLogin.LoginType == "hotlabel" {
+					rootPath = config.GlobalConfig.HotLabel.RootPath
+				} else {
+					rootPath = config.GlobalConfig.ChinaUnicom.RootPath
+				}
+				conn, err = utils.NewSFTPConnectionForModule(account.SFTPUsername, account.SFTPPassword, rootPath, sftpLogin.LoginType, sftpLogin.Username)
+				if err != nil {
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 专用账号连接失败: "+err.Error(), "", "")
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"code":    500,
+						"message": "专用账号连接失败: " + err.Error(),
+					})
+					return
+				}
 			}
 		} else {
 			// 普通密码登录：创建连接实例

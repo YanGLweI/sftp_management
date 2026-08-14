@@ -36,5 +36,10 @@ func registerSettingsRouter(r *gin.Engine) {
 		settingsGroup.PUT("/password-policy", middleware.RequireRoute("PasswordPolicy"), controller.UpdatePasswordPolicy)
 		// 密码校验（修改密码弹框共用，仅鉴权）
 		settingsGroup.POST("/password-policy/validate", controller.ValidatePassword)
+
+		// SFTP 模块配置管理（新增）
+		settingsGroup.GET("/sftp-modules/all", middleware.RequireRoute("SftpModuleManagement"), controller.GetAllModuleConfigs)
+		settingsGroup.GET("/sftp-modules/:name", middleware.RequireRoute("SftpModuleManagement"), controller.GetModuleConfig)
+		settingsGroup.PUT("/sftp-modules/:name", middleware.RequireRoute("SftpModuleManagement"), controller.UpdateModuleConfig)
 	}
 }

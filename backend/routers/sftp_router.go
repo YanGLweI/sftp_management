@@ -12,6 +12,8 @@ func registerSFTPRouter(r *gin.Engine) {
 	sftpGroup := r.Group("/sftp")
 	// sftpGroup.Use(middleware.AuthMiddleware())
 	{
+		// 公共模块配置（/file 登录页无 token 渲染表单用，不返回角色白名单）
+		sftpGroup.GET("/module-configs", controller.GetPublicModuleConfigs)
 		// SFTP 登录：请求体{"username":"string","password":"string","loginType":"string"}
 		sftpGroup.POST("/login", controller.LoginSFTP)
 		// 双控验证：请求体{"username":"string","password":"string"} + 请求头 X-SFTP-Token

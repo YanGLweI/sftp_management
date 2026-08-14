@@ -36,6 +36,10 @@ func GetAllMenus(c *gin.Context) {
 			{"routeName": "LocalUserManagement", "menuTitle": "本地账号"},
 			{"routeName": "PasswordPolicy", "menuTitle": "密码策略"},
 		}},
+		{"routeName": "SftpModuleManagement", "menuTitle": "SFTP 管理", "icon": "el-icon-cpu", "children": []gin.H{
+			{"routeName": "HotLabelConfig", "menuTitle": "标签上传配置"},
+			{"routeName": "ChinaUnicomConfig", "menuTitle": "中国联通配置"},
+		}},
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,

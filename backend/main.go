@@ -41,13 +41,23 @@ func main() {
 		&models.RoleLDAPGroup{},
 		&models.PasswordHistory{},
 		&models.PasswordPolicy{},
+		&models.SFTPModuleConfig{}, // 新增：SFTP 模块配置表
 	)
 	if err != nil {
 		logrus.Fatal("数据库表迁移失败:", err)
 	}
 
-	// 初始化数据
+	// 初始化数据（调度器、密码策略、超级管理员角色、默认admin账号、系统安全标准）
 	common.InitData()
+
+	// 初始化 SFTP 模块默认配置
+	err = models.InitDefaultConfigs()
+	if err != nil {
+		logrus.Fatalf("初始化 SFTP 模块配置失败：%v", err)
+	}
+
+	// 确保超级管理员角色拥有新增的 SFTP 模块管理菜单权限（兼容已有部署）
+	common.EnsureSuperAdminSftpModuleMenus()
 
 	// 启动调度器
 	go scheduler.Run()
@@ -81,5 +91,4 @@ func main() {
 	// 调用封装的优雅停止函数（停止逻辑）
 	// 可选：自定义超时时间，如 graceful.Shutdown(server, graceful.Option{Timeout: 40 * time.Second})
 	graceful.Shutdown(server)
-
 }

@@ -56,38 +56,74 @@
         </el-tab-pane>
         <el-tab-pane label="标签上传" name="hotlabel">
           <el-form :model="SftpForm" label-position="top">
-            <el-form-item label="域账号" :label-width="SftpFormLabelWidth">
-              <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
-            </el-form-item>
-            <el-form-item label="域密码" :label-width="SftpFormLabelWidth">
-              <el-input
-                ref="label"
-                v-model="SftpForm.password"
-                autocomplete="off"
-                type="password"
-                show-password
-                v-focus="SftpDialogFormVisible"
-                @keyup.enter.native="sftplogin()"
-              ></el-input>
-            </el-form-item>
+            <template v-if="moduleConfigs.hotlabel === 'local'">
+              <el-form-item label="本地账号" :label-width="SftpFormLabelWidth">
+                <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
+              </el-form-item>
+              <el-form-item label="本地密码" :label-width="SftpFormLabelWidth">
+                <el-input
+                  ref="labelLocal"
+                  v-model="SftpForm.password"
+                  autocomplete="off"
+                  type="password"
+                  show-password
+                  v-focus="SftpDialogFormVisible"
+                  @keyup.enter.native="sftplogin()"
+                ></el-input>
+              </el-form-item>
+            </template>
+            <template v-else>
+              <el-form-item label="域账号" :label-width="SftpFormLabelWidth">
+                <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
+              </el-form-item>
+              <el-form-item label="域密码" :label-width="SftpFormLabelWidth">
+                <el-input
+                  ref="label"
+                  v-model="SftpForm.password"
+                  autocomplete="off"
+                  type="password"
+                  show-password
+                  v-focus="SftpDialogFormVisible"
+                  @keyup.enter.native="sftplogin()"
+                ></el-input>
+              </el-form-item>
+            </template>
           </el-form>
         </el-tab-pane>
         <el-tab-pane label="中国联通" name="chinaunicom">
           <el-form :model="SftpForm" label-position="top">
-            <el-form-item label="域账号" :label-width="SftpFormLabelWidth">
-              <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
-            </el-form-item>
-            <el-form-item label="域密码" :label-width="SftpFormLabelWidth">
-              <el-input
-                ref="unicomLabel"
-                v-model="SftpForm.password"
-                autocomplete="off"
-                type="password"
-                show-password
-                v-focus="SftpDialogFormVisible"
-                @keyup.enter.native="sftplogin()"
-              ></el-input>
-            </el-form-item>
+            <template v-if="moduleConfigs.chinaunicom === 'local'">
+              <el-form-item label="本地账号" :label-width="SftpFormLabelWidth">
+                <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
+              </el-form-item>
+              <el-form-item label="本地密码" :label-width="SftpFormLabelWidth">
+                <el-input
+                  ref="unicomLabelLocal"
+                  v-model="SftpForm.password"
+                  autocomplete="off"
+                  type="password"
+                  show-password
+                  v-focus="SftpDialogFormVisible"
+                  @keyup.enter.native="sftplogin()"
+                ></el-input>
+              </el-form-item>
+            </template>
+            <template v-else>
+              <el-form-item label="域账号" :label-width="SftpFormLabelWidth">
+                <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
+              </el-form-item>
+              <el-form-item label="域密码" :label-width="SftpFormLabelWidth">
+                <el-input
+                  ref="unicomLabel"
+                  v-model="SftpForm.password"
+                  autocomplete="off"
+                  type="password"
+                  show-password
+                  v-focus="SftpDialogFormVisible"
+                  @keyup.enter.native="sftplogin()"
+                ></el-input>
+              </el-form-item>
+            </template>
           </el-form>
         </el-tab-pane>
       </el-tabs>
@@ -107,8 +143,8 @@
       :username="SftpForm.username"
       :visible="SftpBrowserVisible"
       :upload-headers="uploadHeaders"
-      :dual-verify-enabled="activeName === 'chinaunicom'"
-      :login-domain-user="SftpForm.username"
+      :dual-verify-enabled="dualAuthEnabledMap.chinaunicom"
+      :login-domain-user="moduleConfigs.chinaunicom === 'local' ? '' : SftpForm.username"
       upload-url="/dev-api/sftp/upload"
       @close="closeSftpBrowser"
     />
@@ -117,6 +153,7 @@
 
 <script>
 import SftpBrowser from '@/components/SftpBrowser'
+import sftpModulesApi from '@/api/admin/sftpModules'
 import { rsaEncrypt } from '@/utils/encrypt'
 
 export default {
@@ -218,9 +255,20 @@ export default {
         'X-SFTP-Token': ''
       },
       path: '', //指定登录sftp后的路径
+      // SFTP 模块配置（登录方式：local/ldap），默认 ldap 兼容未配置场景
+      moduleConfigs: {
+        hotlabel: 'ldap',
+        chinaunicom: 'ldap'
+      },
+      // 双控开关配置（仅中国联通生效）
+      dualAuthEnabledMap: {
+        hotlabel: false,
+        chinaunicom: true
+      },
     }
   },
   mounted() {
+    this.fetchModuleConfigs()
     this.$nextTick(() => {
       this.$refs.username.focus()
     })
@@ -228,6 +276,25 @@ export default {
   methods: {
     goToLoginPage() {
       this.$router.push({ path: '/login' })
+    },
+    // 获取 SFTP 模块配置（登录方式 + 双控开关），用于动态渲染登录表单
+    // 使用公共接口 /sftp/module-configs：/file 是公共页面（无需平台 token），与 /login 平级
+    async fetchModuleConfigs() {
+      try {
+        const res = await sftpModulesApi.getPublicConfigs()
+        if (res.code === 200 && Array.isArray(res.data)) {
+          const configMap = {}
+          res.data.forEach(item => {
+            if (item.moduleName === 'hotlabel' || item.moduleName === 'chinaunicom') {
+              configMap[item.moduleName] = item.loginType === 'local' ? 'local' : 'ldap'
+              this.dualAuthEnabledMap[item.moduleName] = !!item.dualAuthEnabled
+            }
+          })
+          this.moduleConfigs = { ...this.moduleConfigs, ...configMap }
+        }
+      } catch (error) {
+        console.error('获取模块配置失败:', error)
+      }
     },
     async sftplogin() {
       if (this.activeName == 'password') {
@@ -248,10 +315,11 @@ export default {
           this.buttonLoading = false
         }
       } else if (this.activeName == 'hotlabel' || this.activeName == 'chinaunicom') {
-        // 标签上传/中国联通：提交域账号密码，由后端域控验证（ldap.sftp_security_group_dn）通过后读取公共账号登录并绑定模块根路径
+        // 标签上传/中国联通：提交账号密码，由后端根据模块配置决定本地或LDAP验证
         const { username, password } = this.SftpForm
         const rsaPassword = rsaEncrypt(password)
-        if (!username || !password) return this.$message.warning('请输入域账号密码')
+        const isLocal = this.moduleConfigs[this.activeName] === 'local'
+        if (!username || !password) return this.$message.warning(isLocal ? '请输入本地账号密码' : '请输入域账号密码')
         this.buttonLoading = true
         try {
           const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword, loginType: this.activeName })
@@ -318,9 +386,17 @@ export default {
       this.path = ''
       if (this.activeName == 'hotlabel' || this.activeName == 'chinaunicom') {
         if (this.activeName == 'hotlabel') {
-          this.$refs.label.focus()
+          if (this.moduleConfigs.hotlabel === 'local') {
+            this.$refs.labelLocal ? this.$refs.labelLocal.focus() : this.$refs.username.focus()
+          } else {
+            this.$refs.label.focus()
+          }
         } else {
-          this.$refs.unicomLabel.focus()
+          if (this.moduleConfigs.chinaunicom === 'local') {
+            this.$refs.unicomLabelLocal ? this.$refs.unicomLabelLocal.focus() : this.$refs.username.focus()
+          } else {
+            this.$refs.unicomLabel.focus()
+          }
         }
         return
       }
@@ -347,16 +423,24 @@ export default {
     },
     handleClick(tab) {
       this.$nextTick(() => {
-        tab.name === 'password' ? this.$refs.username.focus() : this.$refs.keyUsername.focus()
         if (tab.name === 'hotlabel') {
-          this.$refs.label.focus()
-        }else if (tab.name === 'chinaunicom') {
-          this.$refs.unicomLabel.focus()
-        }else{
+          if (this.moduleConfigs.hotlabel === 'local') {
+            this.$refs.labelLocal ? this.$refs.labelLocal.focus() : this.$refs.username.focus()
+          } else {
+            this.$refs.label.focus()
+          }
+        } else if (tab.name === 'chinaunicom') {
+          if (this.moduleConfigs.chinaunicom === 'local') {
+            this.$refs.unicomLabelLocal ? this.$refs.unicomLabelLocal.focus() : this.$refs.username.focus()
+          } else {
+            this.$refs.unicomLabel.focus()
+          }
+        } else {
           this.SftpForm = {
             username: '',
             password: '',
           }
+          tab.name === 'password' ? this.$refs.username.focus() : this.$refs.keyUsername.focus()
         }
       })
     },

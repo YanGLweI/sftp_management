@@ -2,14 +2,15 @@ package middleware
 
 import (
 	"net/http"
+	"sftpbackend/models"
 	"sftpbackend/utils"
 
 	"github.com/gin-gonic/gin"
 )
 
 // DualAuthMiddleware 双控验证中间件
-// 仅对 loginType == "chinaunicom" 的连接强制要求携带有效的双控验证凭证（X-Dual-Token），
-// 其他登录方式（密码/密钥/标签上传）直接放行
+// 根据模块配置决定是否要求双控验证（t_sftp_module_config.dual_auth_enabled），
+// 未配置时默认中国联通模块启用双控，其他模块关闭双控
 func DualAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 获取SFTP连接
@@ -36,13 +37,24 @@ func DualAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 2. 非中国联通连接无需双控验证
-		if conn.LoginType != "chinaunicom" {
+		// 2. 读取模块配置决定是否启用双控
+		requireDualAuth := false
+		moduleConfig, cfgErr := models.GetSFTPModuleConfig(conn.LoginType)
+		if cfgErr == nil && moduleConfig != nil {
+			// 配置存在：以配置为准
+			requireDualAuth = moduleConfig.DualAuthEnabled
+		} else {
+			// 配置不存在时兼容默认行为：仅中国联通默认启用双控
+			requireDualAuth = conn.LoginType == "chinaunicom"
+		}
+
+		// 3. 无需双控验证时直接放行
+		if !requireDualAuth {
 			c.Next()
 			return
 		}
 
-		// 3. 校验双控凭证（X-Dual-Token，60秒有效，绑定当前连接）
+		// 4. 校验双控凭证（X-Dual-Token，60秒有效，绑定当前连接）
 		dualToken := c.GetHeader("X-Dual-Token")
 		if !utils.DualAuthManager.VerifyToken(token, dualToken) {
 			c.JSON(http.StatusOK, gin.H{

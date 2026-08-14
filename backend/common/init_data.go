@@ -116,6 +116,9 @@ func InitData() {
 		{RouteName: "RoleManagement", MenuTitle: "角色管理", ParentID: nil},
 		{RouteName: "LocalUserManagement", MenuTitle: "本地账号", ParentID: nil},
 		{RouteName: "PasswordPolicy", MenuTitle: "密码策略", ParentID: nil},
+		{RouteName: "SftpModuleManagement", MenuTitle: "SFTP 管理", ParentID: nil},
+		{RouteName: "HotLabelConfig", MenuTitle: "标签上传配置", ParentID: nil},
+		{RouteName: "ChinaUnicomConfig", MenuTitle: "中国联通配置", ParentID: nil},
 	}
 	if err := dao.DB.Create(superRole).Error; err != nil {
 		logrus.Printf("InitData Create super role failed: %v", err)
@@ -211,6 +214,43 @@ func InitData() {
 			log.Printf("InitData Create SystemSecurityStandard failed: %v", err)
 		} else {
 			log.Println("InitData Create SystemSecurityStandard success")
+		}
+	}
+}
+
+// EnsureSuperAdminSftpModuleMenus 确保超级管理员角色拥有新增的 SFTP 模块管理菜单权限
+// 兼容已有部署：旧版本的超级管理员角色菜单列表中不包含新菜单，此处补充
+func EnsureSuperAdminSftpModuleMenus() {
+	role, err := models.GetRoleByName("超级管理员")
+	if err != nil {
+		logrus.Printf("EnsureSuperAdminSftpModuleMenus: 超级管理员角色不存在: %v", err)
+		return
+	}
+
+	// 需要确保存在的菜单
+	requiredMenus := []struct {
+		RouteName string
+		MenuTitle string
+	}{
+		{RouteName: "SftpModuleManagement", MenuTitle: "SFTP 管理"},
+		{RouteName: "HotLabelConfig", MenuTitle: "标签上传配置"},
+		{RouteName: "ChinaUnicomConfig", MenuTitle: "中国联通配置"},
+	}
+
+	// 补充缺失的菜单（直接查询 RoleMenu 表判断是否存在，避免 Preload 缺失导致重复插入）
+	for _, m := range requiredMenus {
+		var count int64
+		dao.DB.Model(&models.RoleMenu{}).Where("role_id = ? AND route_name = ?", role.ID, m.RouteName).Count(&count)
+		if count == 0 {
+			if err := dao.DB.Create(&models.RoleMenu{
+				RoleID:    role.ID,
+				RouteName: m.RouteName,
+				MenuTitle: m.MenuTitle,
+			}).Error; err != nil {
+				logrus.Printf("EnsureSuperAdminSftpModuleMenus: 添加菜单 %s 失败: %v", m.RouteName, err)
+			} else {
+				logrus.Printf("EnsureSuperAdminSftpModuleMenus: 为超级管理员添加菜单 %s", m.RouteName)
+			}
 		}
 	}
 }
