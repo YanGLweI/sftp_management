@@ -10,7 +10,7 @@ import (
 // registerContactRouter 注册通讯录相关路由
 func registerContactRouter(r *gin.Engine) {
 	contantGroup := r.Group("/contact")
-	contantGroup.Use(middleware.AuthMiddleware())
+	contantGroup.Use(middleware.AuthMiddleware(), middleware.RequireRoute("Contacts"))
 	{
 		// 获取所有用户列表: /address/:page/:limit?name=string
 		contantGroup.GET("/address/:page/:limit", controller.GetContactList)

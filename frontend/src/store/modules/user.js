@@ -68,14 +68,16 @@ const mutations = {
     state.roles = userInfo.roles
   },
   // ! 最终计算出来的异步路由
-  SET_RESULTASYNCROUTES:(state,asyncRoutes)=>{
-    // vuex存储当前用户的异步路由,注意:一个用户需要展示完整的路由:常量\异步\任意路由
-    state.resultAsyncRoutes = asyncRoutes
-    // 计算出当前用户需要的所有路由
-    state.resultAllRoutes = constantRoutes.concat(state.resultAsyncRoutes,anyRoutes)
+  SET_RESULTASYNCROUTES:(state, payload)=>{
+    // 从 payload 中解构 { asyncRoutes, filteredConstantRoutes }
+    const { asyncRoutes: computedAsync, filteredConstantRoutes: filteredConstant } = payload
+    // vuex存储当前用户的异步路由
+    state.resultAsyncRoutes = computedAsync
+    // 计算出当前用户需要的所有路由:过滤后的常量路由 + 过滤后的异步路由 + 任意路由
+    state.resultAllRoutes = filteredConstant.concat(computedAsync, anyRoutes)
     // 用户的全部路由:异步路由,加上任意路由
-    state.resultUserRoutes = state.resultAsyncRoutes.concat(anyRoutes)
-    // ! 给路由器添加新的路由:不包含常量路由,否则会报路由重复
+    state.resultUserRoutes = computedAsync.concat(anyRoutes)
+    // 给路由器添加新的路由
     router.addRoutes(state.resultUserRoutes)
   }
 }
@@ -83,16 +85,53 @@ const mutations = {
 // ! 定义一个函数:2个数组进行对比,对比出当前用户到底显示哪些路由
 const computedAsyncRoutes = (asyncRoutes,routes)=>{
   // 过滤出当前用户需要展示的异步路由
-  return asyncRoutes.filter(item=>{
-    // 数组中没有这个元素返回-1,如果有返回一定不是-1
+  return asyncRoutes.reduce((result,item)=>{
     if(routes.indexOf(item.name) != -1){
-      // ! 递归,可能有2级3级...路由
-      if(item.children&&item.children.length){
-        item.children = computedAsyncRoutes(item.children,routes)
+      // 浅拷贝，避免修改原始路由对象的 children
+      const copy = { ...item }
+      if(copy.children&&copy.children.length){
+        copy.children = computedAsyncRoutes(copy.children,routes)
       }
-      return true
+      result.push(copy)
     }
-  })
+    return result
+  },[])
+}
+
+// 过滤常量路由：子菜单有权限时保留父级菜单
+const filterConstantRoutes = (constantRoutes, routes) => {
+  return constantRoutes.reduce((result, item) => {
+    // 隐藏路由（/login /404 /file）始终显示
+    if (item.hidden) {
+      result.push(item)
+      return result
+    }
+    // 无权限列表（异常/兼容）时全部显示
+    if (!routes || routes.length === 0) {
+      result.push(item)
+      return result
+    }
+    // 浅拷贝，避免修改原始路由对象的 children
+    const copy = { ...item }
+    // 父级有权限：保留，子菜单递归过滤
+    if (routes.indexOf(copy.name) !== -1) {
+      if (copy.children && copy.children.length) {
+        copy.children = filterConstantRoutes(copy.children, routes)
+      }
+      result.push(copy)
+      return result
+    }
+    // 父级无权限：检查子菜单，只要有子菜单被授权则保留父级并过滤子菜单
+    if (copy.children && copy.children.length) {
+      const filteredChildren = filterConstantRoutes(copy.children, routes)
+      if (filteredChildren.length > 0) {
+        copy.children = filteredChildren
+        result.push(copy)
+        return result
+      }
+    }
+    return result
+  }, [])
 }
 
 // ! actions
@@ -107,7 +146,8 @@ const actions = {
       commit('SET_TOKEN', result.data.token)
       // ! 本地持久化存储
       setToken(result.data.token)
-      return 'ok'
+      // 返回完整响应供登录页判断 must_change_password / password_expired
+      return result
     }else{
       return Promise.reject(new Error('failed'))
     }
@@ -136,7 +176,13 @@ const actions = {
         // ! 获取的用户信息包含 用户名name\用户头像avatar\routes[不同的用户应该展示哪些菜单的标记]\角色信息roles\buttons[按钮权限标记]
         // ! vuex存储全部信息
         commit('SET_USERINFO',data)
-        commit('SET_RESULTASYNCROUTES',computedAsyncRoutes(asyncRoutes,data.routes))
+        // 同时过滤常量路由和异步路由
+        const filteredConstant = filterConstantRoutes(constantRoutes, data.routes || [])
+        const filteredAsync = computedAsyncRoutes(asyncRoutes, data.routes || [])
+        commit('SET_RESULTASYNCROUTES', {
+          asyncRoutes: filteredAsync,
+          filteredConstantRoutes: filteredConstant
+        })
         resolve(data)
       }).catch(error => {
         reject(error)

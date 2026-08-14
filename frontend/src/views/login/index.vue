@@ -1,95 +1,125 @@
 <template>
-  <div class="login-container">
-    <!-- 背景图片容器 -->
-    <div class="bg-container"></div>
-    <!-- 左上角logo -->
-    <div class="logo-container">
-      <img :src="logoPath" alt="系统logo" class="logo" @click="goToFilePage" />
-    </div>
-    <!-- 登录表单 -->
-    <el-form 
-      ref="loginForm" 
-      :model="loginForm" 
-      :rules="loginRules" 
-      class="login-form" 
-      auto-complete="on" 
-      label-position="left"
-    >
-      <div class="title-container">
-        <h3 class="title">SFTP管理平台</h3>
+  <div class="login-wrapper">
+    <div class="login-container">
+      <!-- 背景图片容器 -->
+      <div class="bg-container"></div>
+      <!-- 左上角logo -->
+      <div class="logo-container">
+        <img :src="logoPath" alt="系统logo" class="logo" @click="goToFilePage" />
       </div>
-
-      <el-form-item prop="username">
-        <span class="svg-container">
-          <svg-icon icon-class="user" />
-        </span>
-        <el-input
-          ref="username"
-          v-model="loginForm.username"
-          placeholder="Username"
-          name="username"
-          type="text"
-          tabindex="1"
-          autocomplete="off"
-        />
-      </el-form-item>
-
-      <el-form-item prop="password">
-        <span class="svg-container">
-          <svg-icon icon-class="password" />
-        </span>
-        <el-input
-          :key="passwordType"
-          ref="password"
-          v-model="loginForm.password"
-          :type="passwordType"
-          placeholder="Password"
-          name="password"
-          tabindex="2"
-          autocomplete="new-password"
-          @keyup.enter.native="handleLogin"
-        />
-        <span class="show-pwd" @click="showPwd">
-          <svg-icon :icon-class="passwordType === 'password' ? 'eye' : 'eye-open'" />
-        </span>
-      </el-form-item>
-
-      <el-form-item prop="loginType">
-        <span class="svg-container">
-          <svg-icon icon-class="earth" />
-        </span>
-        <el-select
-          v-model="loginForm.loginType"
-          placeholder="Login Type"
-          name="loginType"
-          tabindex="3"
-          autocomplete="off"
-        >
-          <el-option label="本地登录" value="local" />
-          <el-option label="LDAP登录" value="ldap" />
-        </el-select>
-      </el-form-item>
-
-      <el-button 
-        :loading="loading" 
-        type="primary" 
-        class="login-btn"
-        @click.native.prevent="handleLogin"
+      <!-- 登录表单 -->
+      <el-form 
+        ref="loginForm" 
+        :model="loginForm" 
+        :rules="loginRules" 
+        class="login-form" 
+        auto-complete="on" 
+        label-position="left"
       >
-        登 录
-      </el-button>
+        <div class="title-container">
+          <h3 class="title">SFTP管理平台</h3>
+        </div>
 
-      <div class="tips">
-        <!-- <span style="margin-right:20px;">username: admin</span> -->
-        <!-- <span> password: any</span> -->
-      </div>
-    </el-form>
+        <el-form-item prop="username">
+          <span class="svg-container">
+            <svg-icon icon-class="user" />
+          </span>
+          <el-input
+            ref="username"
+            v-model="loginForm.username"
+            placeholder="Username"
+            name="username"
+            type="text"
+            tabindex="1"
+            autocomplete="off"
+          />
+        </el-form-item>
+
+        <el-form-item prop="password">
+          <span class="svg-container">
+            <svg-icon icon-class="password" />
+          </span>
+          <el-input
+            :key="passwordType"
+            ref="password"
+            v-model="loginForm.password"
+            :type="passwordType"
+            placeholder="Password"
+            name="password"
+            tabindex="2"
+            autocomplete="new-password"
+            @keyup.enter.native="handleLogin"
+          />
+          <span class="show-pwd" @click="showPwd">
+            <svg-icon :icon-class="passwordType === 'password' ? 'eye' : 'eye-open'" />
+          </span>
+        </el-form-item>
+
+        <el-form-item prop="loginType">
+          <span class="svg-container">
+            <svg-icon icon-class="earth" />
+          </span>
+          <el-select
+            v-model="loginForm.loginType"
+            placeholder="Login Type"
+            name="loginType"
+            tabindex="3"
+            autocomplete="off"
+          >
+            <el-option label="本地登录" value="local" />
+            <el-option label="LDAP登录" value="ldap" />
+          </el-select>
+        </el-form-item>
+
+        <el-button 
+          :loading="loading" 
+          type="primary" 
+          class="login-btn"
+          @click.native.prevent="handleLogin"
+        >
+          登 录
+        </el-button>
+
+        <div class="tips">
+          <!-- <span style="margin-right:20px;">username: admin</span> -->
+          <!-- <span> password: any</span> -->
+        </div>
+      </el-form>
+    </div>
+
+    <!-- 修改密码弹框 -->
+    <el-dialog
+      :title="isPasswordExpired ? '密码已过期，请修改密码' : '首次登录，请修改密码'"
+      :visible.sync="changePasswordDialogVisible"
+      width="450px"
+      :close-on-click-modal="false"
+      :show-close="false"
+    >
+      <el-form label-width="100px">
+        <el-form-item label="旧密码">
+          <el-input v-model="changePasswordForm.oldPassword" type="password" disabled />
+          <span style="font-size: 12px; color: #999;">（登录已验证）</span>
+        </el-form-item>
+        <el-form-item label="新密码" required>
+          <el-input v-model="changePasswordForm.newPassword" type="password" placeholder="请输入新密码" show-password />
+        </el-form-item>
+        <el-form-item label="确认密码" required>
+          <el-input v-model="changePasswordForm.confirmPassword" type="password" placeholder="请再次输入新密码" show-password />
+        </el-form-item>
+      </el-form>
+      <span slot="footer">
+        <el-button type="primary" :loading="changePasswordLoading" @click="handleChangePassword">确认修改</el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import { validUsername } from '@/utils/validate'
 import { rsaEncrypt } from '@/utils/encrypt'
+import { setToken } from '@/utils/auth'
+import { changePassword } from '@/api/user'
+import { validatePassword } from '@/api/settings'
 
 export default {
   name: 'Login',
@@ -132,7 +162,16 @@ export default {
       loading: false,
       passwordType: 'password',
       redirect: undefined,
-      logoPath: require('@/assets/logo.png')
+      logoPath: require('@/assets/logo.png'),
+        // 修改密码弹框
+        changePasswordDialogVisible: false,
+        changePasswordForm: {
+          oldPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        },
+        changePasswordLoading: false,
+        isPasswordExpired: false
     }
   },
   watch: {
@@ -167,9 +206,23 @@ export default {
           const {username,password,loginType} = this.loginForm
           const rsaPassword = rsaEncrypt(password)
           this.loading = true
-          this.$store.dispatch('user/login', {username,password:rsaPassword,loginType}).then(() => {
-            this.$router.push({ path: this.redirect || '/' })
-            this.loading = false
+          this.$store.dispatch('user/login', {username,password:rsaPassword,loginType}).then(res => {
+            // 检查是否首次登录需改密或密码过期
+            if (res.data && res.data.must_change_password) {
+              this.isPasswordExpired = false
+              this.changePasswordForm.oldPassword = password // 预填密码
+              this.changePasswordDialogVisible = true
+              this.loading = false
+            } else if (res.data && res.data.password_expired) {
+              this.isPasswordExpired = true
+              this.changePasswordForm.oldPassword = password // 预填密码
+              this.changePasswordDialogVisible = true
+              this.loading = false
+            } else {
+              // 登录成功跳转：目标路由由路由守卫根据权限动态处理
+              this.$router.push({ path: this.redirect || '/' })
+              this.loading = false
+            }
           }).catch(() => {
             this.loading = false
           })
@@ -178,6 +231,40 @@ export default {
           return false
         }
       })
+    },
+    // 修改密码
+    async handleChangePassword() {
+      if (!this.changePasswordForm.newPassword) {
+        this.$message.warning('请输入新密码')
+        return
+      }
+      if (this.changePasswordForm.newPassword !== this.changePasswordForm.confirmPassword) {
+        this.$message.warning('两次输入的密码不一致')
+        return
+      }
+      this.changePasswordLoading = true
+      try {
+        const rsaOldPwd = rsaEncrypt(this.changePasswordForm.oldPassword)
+        const rsaNewPwd = rsaEncrypt(this.changePasswordForm.newPassword)
+        const res = await changePassword({
+          oldPassword: rsaOldPwd,
+          newPassword: rsaNewPwd
+        })
+        if (res.code === 20000) {
+          this.$message.success('密码修改成功')
+          // 更新token
+          this.$store.commit('user/SET_TOKEN', res.data.token)
+          setToken(res.data.token)
+          this.changePasswordDialogVisible = false
+          this.$router.push({ path: this.redirect || '/' })
+        } else {
+          this.$message.error(res.message)
+        }
+      } catch (e) {
+        this.$message.error('密码修改失败')
+        console.error(e)
+      }
+      this.changePasswordLoading = false
     }
   }
 }

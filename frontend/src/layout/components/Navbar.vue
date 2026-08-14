@@ -58,7 +58,8 @@ export default {
     },
     async logout() {
       await this.$store.dispatch('user/logout')
-      this.$router.push(`/login?redirect=${this.$route.fullPath}`)
+      // 退出登录时不清带 redirect，避免不同账号间权限冲突
+      this.$router.push('/login')
     },
     errorHandler(){
       return true

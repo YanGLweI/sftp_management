@@ -87,6 +87,7 @@ export const constantRoutes = [
     component: Layout,
     name: 'Sftp',
     meta: { title: '传输管理', icon: 'el-icon-sort' },
+    alwaysShow: true,
     redirect: '/sftp/sftpuser',
     children: [
       {
@@ -109,6 +110,7 @@ export const constantRoutes = [
     component: Layout,
     name: 'Log',
     meta: { title: '日志管理', icon: 'el-icon-tickets' },
+    alwaysShow: true,
     redirect: '/log/platformlog',
     children: [
       {
@@ -131,6 +133,7 @@ export const constantRoutes = [
     component: Layout,
     name: 'System',
     meta: { title: '系统安全', icon: 'el-icon-lock' },
+    alwaysShow: true,
     redirect: '/system/update',
     children: [
       {
@@ -150,6 +153,35 @@ export const constantRoutes = [
         name: 'SystemHardening',
         component: () => import('@/views/systemSecurity/SystemHardening'),
         meta: { title: '系统加固' },
+      },
+    ],
+  },
+  // ! 平台设置
+  {
+    path: '/settings',
+    component: Layout,
+    name: 'Settings',
+    meta: { title: '平台设置', icon: 'el-icon-setting' },
+    alwaysShow: true,
+    redirect: '/settings/roles',
+    children: [
+      {
+        path: 'roles',
+        name: 'RoleManagement',
+        component: () => import('@/views/settings/Role'),
+        meta: { title: '角色管理' },
+      },
+      {
+        path: 'localusers',
+        name: 'LocalUserManagement',
+        component: () => import('@/views/settings/LocalUser'),
+        meta: { title: '本地账号' },
+      },
+      {
+        path: 'password-policy',
+        name: 'PasswordPolicy',
+        component: () => import('@/views/settings/PasswordPolicy'),
+        meta: { title: '密码策略' },
       },
     ],
   },

@@ -6,7 +6,10 @@ import (
 	"sftpbackend/config"
 	"sftpbackend/dao"
 	"sftpbackend/models"
+	"time"
 
+	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -64,8 +67,83 @@ func InitData() {
 		}
 	}
 
+	// ========== 初始化PasswordPolicy默认密码策略 ==========
+	var policyCount int64
+	dao.DB.Model(&models.PasswordPolicy{}).Count(&policyCount)
+	if policyCount == 0 {
+		defaultPolicy := &models.PasswordPolicy{
+			MinLength:          14,
+			RequireUppercase:   true,
+			RequireLowercase:   true,
+			RequireDigit:       true,
+			RequireSpecialChar: true,
+			ExpiryDays:         90,
+			PasswordHistory:    5,
+			MaxLoginAttempts:   5,
+		}
+		if err := dao.DB.Create(defaultPolicy).Error; err != nil {
+			logrus.Printf("InitData Create PasswordPolicy failed: %v", err)
+		} else {
+			logrus.Println("InitData Create PasswordPolicy success")
+		}
+	}
+
+	// ========== 初始化默认角色和本地管理员账号 ==========
+	var localUserCount int64
+	dao.DB.Model(&models.LocalUser{}).Count(&localUserCount)
+	if localUserCount > 0 {
+		return
+	}
+
+	// 创建超级管理员角色（拥有所有菜单权限）
+	superRole := &models.Role{
+		Name:        "超级管理员",
+		Description: "拥有系统所有权限",
+	}
+	superRole.Menus = []models.RoleMenu{
+		{RouteName: "Dashboard", MenuTitle: "首页"},
+		{RouteName: "Sftp", MenuTitle: "传输管理"},
+		{RouteName: "SftpUser", MenuTitle: "账号管理", ParentID: nil},
+		{RouteName: "Contacts", MenuTitle: "通讯邮箱", ParentID: nil},
+		{RouteName: "Log", MenuTitle: "日志管理"},
+		{RouteName: "PlatformLog", MenuTitle: "平台日志", ParentID: nil},
+		{RouteName: "SftpLog", MenuTitle: "SFTP日志", ParentID: nil},
+		{RouteName: "System", MenuTitle: "系统安全"},
+		{RouteName: "SystemUpdate", MenuTitle: "系统更新", ParentID: nil},
+		{RouteName: "Antivirus", MenuTitle: "病毒管理", ParentID: nil},
+		{RouteName: "SystemHardening", MenuTitle: "系统加固", ParentID: nil},
+		{RouteName: "Settings", MenuTitle: "平台设置"},
+		{RouteName: "RoleManagement", MenuTitle: "角色管理", ParentID: nil},
+		{RouteName: "LocalUserManagement", MenuTitle: "本地账号", ParentID: nil},
+		{RouteName: "PasswordPolicy", MenuTitle: "密码策略", ParentID: nil},
+	}
+	if err := dao.DB.Create(superRole).Error; err != nil {
+		logrus.Printf("InitData Create super role failed: %v", err)
+		return
+	}
+
+	// 创建默认管理员 admin
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin1234567890."), bcrypt.DefaultCost)
+	if err != nil {
+		logrus.Printf("InitData hash password failed: %v", err)
+		return
+	}
+	now := time.Now()
+	admin := &models.LocalUser{
+		Username:           "admin",
+		Password:           string(hashedPassword),
+		MustChangePassword: true,
+		PasswordChangedAt:  &now,
+		Enabled:            true,
+		RoleID:             &superRole.ID,
+	}
+	if err := dao.DB.Create(admin).Error; err != nil {
+		logrus.Printf("InitData Create admin user failed: %v", err)
+	} else {
+		logrus.Println("InitData Create admin user success")
+	}
+
 	// ========== 新增SystemSecurityStandard标准数据初始化逻辑 ==========
-	// 构造标准值实例（对应SQL中的标准数据）
 	standardSecurity := &models.SystemSecurityStandard{
 		// DNF/Repo配置
 		DnfConfGpgcheck:    "1",

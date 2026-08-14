@@ -15,7 +15,7 @@ func registerSystemRouter(r *gin.Engine) {
 	systemGroup.GET("/ws/update", controller.SystemUpdate)
 
 	// 需要鉴权的系统模块接口
-	systemGroup.Use(middleware.AuthMiddleware())
+	systemGroup.Use(middleware.AuthMiddleware(), middleware.RequireRoute("System"))
 	{
 		// 获取更新历史 : /update/history?pageNum=1&pageSize=10
 		systemGroup.GET("/update/history", controller.GetUpdateHistory)

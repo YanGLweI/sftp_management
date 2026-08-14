@@ -35,6 +35,12 @@ func main() {
 		&models.Scheduler{},
 		&models.SystemSecurity{},
 		&models.SystemSecurityStandard{},
+		&models.LocalUser{},
+		&models.Role{},
+		&models.RoleMenu{},
+		&models.RoleLDAPGroup{},
+		&models.PasswordHistory{},
+		&models.PasswordPolicy{},
 	)
 	if err != nil {
 		logrus.Fatal("数据库表迁移失败:", err)

@@ -13,20 +13,26 @@
           <a style="color:#20a0ff" href="https://gitee.com/yeunglw" target="_blank">Yeunglw</a>
         </div>
         <div class="bullshit__headline">{{ message }}</div>
-        <div class="bullshit__info">Please check that the URL you entered is correct, or click the button below to return to the homepage.</div>
-        <a href="" class="bullshit__return-home">Back to home</a>
+        <div class="bullshit__info">Please check that the URL you entered is correct, or click the button below to return to the available page.</div>
+        <router-link :to="accessiblePath" class="bullshit__return-home">Back to home</router-link>
       </div>
     </div>
   </div>
 </template>
 
 <script>
+import { getFirstAccessibleRoutePath } from '@/utils/get-first-accessible-route'
 
 export default {
   name: 'Page404',
   computed: {
     message() {
       return 'The webmaster said that you can not enter this page...'
+    },
+    accessiblePath() {
+      const routes = this.$store && this.$store.state.user && this.$store.state.user.resultAllRoutes
+      const path = getFirstAccessibleRoutePath(routes)
+      return path || '/login'
     }
   }
 }

@@ -41,6 +41,7 @@ func SetupRouter() *gin.Engine {
 	registerSFTPRouter(r)      // SFTP模块路由
 	registerContactRouter(r)   // 通讯录模块路由
 	registerSystemRouter(r)    // 系统安全模块路由
+	registerSettingsRouter(r)  // 平台设置模块路由
 
 	return r
 }

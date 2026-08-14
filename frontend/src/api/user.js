@@ -33,3 +33,12 @@ export function logout() {
     method: 'get'
   })
 }
+
+// 修改密码
+export function changePassword(data) {
+  return request({
+    url: '/user/change-password',
+    method: 'post',
+    data
+  })
+}
