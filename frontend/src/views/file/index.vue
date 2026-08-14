@@ -135,6 +135,12 @@
           :loading="buttonLoading"
         >{{ buttonLoading ? '提交中 ...' : '确 定' }}</el-button>
       </div>
+
+      <div class="back-to-platform-link">
+        <span class="link-text" @click="goToLoginPage">
+          返回 SFTP 管理平台
+        </span>
+      </div>
     </el-card>
 
     <!-- 公共 SFTP 浏览器组件 -->
@@ -501,6 +507,10 @@ $apple-text-disabled: #8e8e93;
 $apple-fill: rgba(120, 120, 128, 0.08);
 $apple-fill-strong: rgba(120, 120, 128, 0.12);
 
+// 颜色变量
+$light-gray: #f8fafc;
+$primary-color: #64c896;
+
 .page-container {
   position: relative;
   display: flex;
@@ -699,6 +709,27 @@ $apple-fill-strong: rgba(120, 120, 128, 0.12);
 
   ::v-deep .el-button {
     flex: 1;
+  }
+}
+
+// 返回平台链接
+.back-to-platform-link {
+  text-align: center;
+  margin-top: 15px;
+
+  .link-text {
+    display: inline-block;
+    color: rgba($light-gray, 0.9);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    padding: 4px 0;
+
+    &:hover {
+      color: rgba($light-gray, 1);
+      transform: scale(1.08);
+    }
   }
 }
 

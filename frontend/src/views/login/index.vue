@@ -84,6 +84,12 @@
           <!-- <span style="margin-right:20px;">username: admin</span> -->
           <!-- <span> password: any</span> -->
         </div>
+
+        <div class="sftp-login-link">
+          <span class="link-text" @click="goToFilePage">
+            进入 SFTP 登录
+          </span>
+        </div>
       </el-form>
     </div>
 
@@ -433,6 +439,26 @@ $glass-border: rgba(100, 200, 150, 0.5);
     color: $mid-gray;
     margin-top: 10px;
     text-align: center;
+  }
+
+  // SFTP 登录链接
+  .sftp-login-link {
+    text-align: center;
+    margin-top: 15px;
+
+    .link-text {
+      display: inline-block;
+      color: $primary-color;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      padding: 4px 0;
+
+      &:hover {
+        transform: scale(1.08);
+      }
+    }
   }
 
   // 显示密码按钮（适配透明背景）
