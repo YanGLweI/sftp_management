@@ -148,17 +148,26 @@
       upload-url="/dev-api/sftp/upload"
       @close="closeSftpBrowser"
     />
+
+    <!-- 修改密码弹框（公共组件：自动聚焦新密码、回车提交、标题统一） -->
+    <ChangePasswordDialog
+      :visible.sync="changePasswordDialogVisible"
+      :old-password="changeOldPassword"
+      :change-token="changeToken"
+      @success="handleChangeSuccess"
+    />
   </div>
 </template>
 
 <script>
 import SftpBrowser from '@/components/SftpBrowser'
+import ChangePasswordDialog from '@/components/ChangePasswordDialog'
 import sftpModulesApi from '@/api/admin/sftpModules'
 import { rsaEncrypt } from '@/utils/encrypt'
 
 export default {
   name: 'File',
-  components: { SftpBrowser },
+  components: { SftpBrowser, ChangePasswordDialog },
   data() {
     // 密码验证器
     var validatePass = (rule, value, callback) => {
@@ -265,6 +274,10 @@ export default {
         hotlabel: false,
         chinaunicom: true
       },
+      // 修改密码弹框（账号需修改密码时弹出，公共组件）
+      changePasswordDialogVisible: false,
+      changeToken: '',
+      changeOldPassword: '',
     }
   },
   mounted() {
@@ -296,6 +309,13 @@ export default {
         console.error('获取模块配置失败:', error)
       }
     },
+    // 修改密码成功：提示重新登录并清空登录表单
+    handleChangeSuccess() {
+      this.$message.success('密码修改成功，请重新登录')
+      this.changeToken = ''
+      this.changeOldPassword = ''
+      this.SftpForm = { username: '', password: '' }
+    },
     async sftplogin() {
       if (this.activeName == 'password') {
         const { username, password } = this.SftpForm
@@ -324,6 +344,13 @@ export default {
         try {
           const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword, loginType: this.activeName })
           if (res.code == 200) {
+            if (res.data && res.data.must_change_password) {
+              // 账号需修改密码：弹出修改密码弹框（公共组件，旧密码由 changeOldPassword 预填）
+              this.changeOldPassword = password
+              this.changeToken = res.data.change_token
+              this.changePasswordDialogVisible = true
+              return
+            }
             sessionStorage.setItem("sftp_token", res.data.sftp_token)
             this.uploadHeaders['X-SFTP-Token'] = res.data.sftp_token
             this.path = this.activeName == 'hotlabel' ? '/hotlabel' : '/ChinaUnicom'

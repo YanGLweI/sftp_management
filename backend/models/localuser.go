@@ -12,7 +12,8 @@ type LocalUser struct {
 	gorm.Model
 	Username            string     `json:"username" gorm:"column:username;type:varchar(64);uniqueIndex;not null"`
 	Password            string     `json:"-" gorm:"column:password;type:varchar(256);not null"`                                   // bcrypt 哈希值，不返回
-	MustChangePassword  bool       `json:"mustChangePassword" gorm:"column:must_change_password;default:true"`                     // 首次登录/管理员重置后需改密
+	MustChangePassword  bool       `json:"mustChangePassword" gorm:"column:must_change_password;default:false"`                       // 登录后需改密（新建/编辑勾选生效，不限首次）
+	PasswordNeverExpires bool      `json:"passwordNeverExpires" gorm:"column:password_never_expires;default:false"`                   // 密码永不过期（跳过过期检查）
 	PasswordChangedAt   *time.Time `json:"passwordChangedAt" gorm:"column:password_changed_at"`                                    // 用于密码过期判断
 	Enabled             bool       `json:"enabled" gorm:"column:enabled;default:true"`                                            // 是否启用
 	FailedAttempts      int        `json:"failedAttempts" gorm:"column:failed_attempts;default:0"`                                 // 连续失败登录次数

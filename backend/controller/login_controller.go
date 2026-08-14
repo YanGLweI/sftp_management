@@ -140,8 +140,17 @@ func Login(c *gin.Context) {
 	// 本地账号特殊标记
 	if userInput.LoginType == "local" {
 		if mustChangePassword {
+			// 需修改密码，生成受限 Token（与密码过期保持一致）
+			limitedToken, err := jwt.GenerateLimitedToken(userInput.Name)
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"code":    500,
+					"message": "生成 Token 失败",
+				})
+				return
+			}
 			response["data"] = gin.H{
-				"token":                token,
+				"token":                limitedToken,
 				"must_change_password": true,
 				"routes":               routes,
 			}
@@ -263,6 +272,15 @@ func ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"code":    400,
 			"message": err.Error(),
+		})
+		return
+	}
+
+	// 检查新密码是否与当前密码相同
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(decryptedNew)); err == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    400,
+			"message": "新密码不能与当前密码相同",
 		})
 		return
 	}

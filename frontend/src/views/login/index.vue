@@ -87,30 +87,13 @@
       </el-form>
     </div>
 
-    <!-- 修改密码弹框 -->
-    <el-dialog
-      :title="isPasswordExpired ? '密码已过期，请修改密码' : '首次登录，请修改密码'"
+    <!-- 修改密码弹框（公共组件：自动聚焦新密码、回车提交、标题统一） -->
+    <ChangePasswordDialog
       :visible.sync="changePasswordDialogVisible"
-      width="450px"
-      :close-on-click-modal="false"
-      :show-close="false"
-    >
-      <el-form label-width="100px">
-        <el-form-item label="旧密码">
-          <el-input v-model="changePasswordForm.oldPassword" type="password" disabled />
-          <span style="font-size: 12px; color: #999;">（登录已验证）</span>
-        </el-form-item>
-        <el-form-item label="新密码" required>
-          <el-input v-model="changePasswordForm.newPassword" type="password" placeholder="请输入新密码" show-password />
-        </el-form-item>
-        <el-form-item label="确认密码" required>
-          <el-input v-model="changePasswordForm.confirmPassword" type="password" placeholder="请再次输入新密码" show-password />
-        </el-form-item>
-      </el-form>
-      <span slot="footer">
-        <el-button type="primary" :loading="changePasswordLoading" @click="handleChangePassword">确认修改</el-button>
-      </span>
-    </el-dialog>
+      :old-password="loginForm.password"
+      :change-token="currentChangeToken"
+      @success="handleChangeSuccess"
+    />
   </div>
 </template>
 
@@ -118,11 +101,12 @@
 import { validUsername } from '@/utils/validate'
 import { rsaEncrypt } from '@/utils/encrypt'
 import { setToken } from '@/utils/auth'
-import { changePassword } from '@/api/user'
 import { validatePassword } from '@/api/settings'
+import ChangePasswordDialog from '@/components/ChangePasswordDialog'
 
 export default {
   name: 'Login',
+  components: { ChangePasswordDialog },
   data() {
     const validateUsername = (rule, value, callback) => {
       if (!value) {
@@ -163,15 +147,9 @@ export default {
       passwordType: 'password',
       redirect: undefined,
       logoPath: require('@/assets/logo.png'),
-        // 修改密码弹框
-        changePasswordDialogVisible: false,
-        changePasswordForm: {
-          oldPassword: '',
-          newPassword: '',
-          confirmPassword: ''
-        },
-        changePasswordLoading: false,
-        isPasswordExpired: false
+      // 修改密码弹框
+      changePasswordDialogVisible: false,
+      currentChangeToken: '' // 存储受限 Token（需改密场景）
     }
   },
   watch: {
@@ -207,15 +185,10 @@ export default {
           const rsaPassword = rsaEncrypt(password)
           this.loading = true
           this.$store.dispatch('user/login', {username,password:rsaPassword,loginType}).then(res => {
-            // 检查是否首次登录需改密或密码过期
-            if (res.data && res.data.must_change_password) {
-              this.isPasswordExpired = false
-              this.changePasswordForm.oldPassword = password // 预填密码
-              this.changePasswordDialogVisible = true
-              this.loading = false
-            } else if (res.data && res.data.password_expired) {
-              this.isPasswordExpired = true
-              this.changePasswordForm.oldPassword = password // 预填密码
+            // 检查是否需改密或密码过期（旧密码由公共弹框组件从登录表单预填）
+            if (res.data && (res.data.must_change_password || res.data.password_expired)) {
+              // 传递受限 Token 给组件（仅限需改密/密码过期场景）
+              this.currentChangeToken = res.data.token
               this.changePasswordDialogVisible = true
               this.loading = false
             } else {
@@ -232,39 +205,14 @@ export default {
         }
       })
     },
-    // 修改密码
-    async handleChangePassword() {
-      if (!this.changePasswordForm.newPassword) {
-        this.$message.warning('请输入新密码')
-        return
+    // 修改密码成功：更新 token 并跳转首页
+    handleChangeSuccess(token) {
+      this.$message.success('密码修改成功')
+      if (token) {
+        this.$store.commit('user/SET_TOKEN', token)
+        setToken(token)
       }
-      if (this.changePasswordForm.newPassword !== this.changePasswordForm.confirmPassword) {
-        this.$message.warning('两次输入的密码不一致')
-        return
-      }
-      this.changePasswordLoading = true
-      try {
-        const rsaOldPwd = rsaEncrypt(this.changePasswordForm.oldPassword)
-        const rsaNewPwd = rsaEncrypt(this.changePasswordForm.newPassword)
-        const res = await changePassword({
-          oldPassword: rsaOldPwd,
-          newPassword: rsaNewPwd
-        })
-        if (res.code === 20000) {
-          this.$message.success('密码修改成功')
-          // 更新token
-          this.$store.commit('user/SET_TOKEN', res.data.token)
-          setToken(res.data.token)
-          this.changePasswordDialogVisible = false
-          this.$router.push({ path: this.redirect || '/' })
-        } else {
-          this.$message.error(res.message)
-        }
-      } catch (e) {
-        this.$message.error('密码修改失败')
-        console.error(e)
-      }
-      this.changePasswordLoading = false
+      this.$router.push({ path: this.redirect || '/' })
     }
   }
 }

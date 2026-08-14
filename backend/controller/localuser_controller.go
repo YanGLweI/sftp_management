@@ -71,10 +71,12 @@ func GetLocalUserList(c *gin.Context) {
 // CreateLocalUser 创建本地账号
 func CreateLocalUser(c *gin.Context) {
 	var req struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-		RoleID   *uint  `json:"roleId"`
-		Enabled  *bool  `json:"enabled"`
+		Username             string `json:"username" binding:"required"`
+		Password             string `json:"password" binding:"required"`
+		RoleID               *uint  `json:"roleId"`
+		Enabled              *bool  `json:"enabled"`
+		MustChangePassword   *bool  `json:"mustChangePassword"`   // 登录后需改密（默认 false）
+		PasswordNeverExpires *bool  `json:"passwordNeverExpires"` // 密码永不过期（默认 false）
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{"code": 400, "message": "请求数据格式错误"})
@@ -86,6 +88,9 @@ func CreateLocalUser(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"code": 400, "message": "用户名已存在"})
 		return
 	}
+
+	// 清理可能残留的软删除同名记录（避免用户名唯一索引冲突，历史数据可能为软删）
+	dao.DB.Unscoped().Where("username = ?", req.Username).Delete(&models.LocalUser{})
 
 	// 解密密码
 	decryptedPassword, err := tools.DecryptPassword(req.Password)
@@ -112,14 +117,23 @@ func CreateLocalUser(c *gin.Context) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	mustChangePassword := false
+	if req.MustChangePassword != nil {
+		mustChangePassword = *req.MustChangePassword
+	}
+	passwordNeverExpires := false
+	if req.PasswordNeverExpires != nil {
+		passwordNeverExpires = *req.PasswordNeverExpires
+	}
 
 	user := models.LocalUser{
-		Username:           req.Username,
-		Password:           string(hashedPassword),
-		MustChangePassword: true,
-		PasswordChangedAt:  &now,
-		Enabled:            enabled,
-		RoleID:             req.RoleID,
+		Username:             req.Username,
+		Password:             string(hashedPassword),
+		MustChangePassword:   mustChangePassword,
+		PasswordNeverExpires: passwordNeverExpires,
+		PasswordChangedAt:    &now,
+		Enabled:              enabled,
+		RoleID:               req.RoleID,
 	}
 
 	if err := dao.DB.Create(&user).Error; err != nil {
@@ -144,8 +158,10 @@ func UpdateLocalUser(c *gin.Context) {
 	}
 
 	var req struct {
-		RoleID  *uint `json:"roleId"`
-		Enabled *bool `json:"enabled"`
+		RoleID               *uint `json:"roleId"`
+		Enabled              *bool `json:"enabled"`
+		MustChangePassword   *bool `json:"mustChangePassword"`   // 登录后需改密
+		PasswordNeverExpires *bool `json:"passwordNeverExpires"` // 密码永不过期
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{"code": 400, "message": "请求数据格式错误"})
@@ -168,6 +184,12 @@ func UpdateLocalUser(c *gin.Context) {
 		if *req.Enabled {
 			updates["failed_attempts"] = 0
 		}
+	}
+	if req.MustChangePassword != nil {
+		updates["must_change_password"] = *req.MustChangePassword
+	}
+	if req.PasswordNeverExpires != nil {
+		updates["password_never_expires"] = *req.PasswordNeverExpires
 	}
 
 	if err := dao.DB.Model(user).Updates(updates).Error; err != nil {
@@ -263,7 +285,8 @@ func DeleteLocalUser(c *gin.Context) {
 	// 删除密码历史
 	dao.DB.Where("local_user_id = ?", user.ID).Delete(&models.PasswordHistory{})
 
-	if err := dao.DB.Delete(user).Error; err != nil {
+	// 硬删除账号（释放用户名唯一索引，允许之后重新创建同名账号）
+	if err := dao.DB.Unscoped().Delete(user).Error; err != nil {
 		c.JSON(http.StatusOK, gin.H{"code": 500, "message": "删除账号失败"})
 		return
 	}

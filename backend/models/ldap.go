@@ -182,9 +182,9 @@ func AuthenticateLocal(username, password string) (*LocalUser, bool, error) {
 		return user, false, nil
 	}
 
-	// 检查密码是否过期
+	// 检查密码是否过期（永不过期账号豁免）
 	passwordExpired := false
-	if user.PasswordChangedAt != nil {
+	if !user.PasswordNeverExpires && user.PasswordChangedAt != nil {
 		policy, _ := GetPasswordPolicy()
 		if policy != nil && policy.ExpiryDays > 0 {
 			expiryTime := user.PasswordChangedAt.Add(time.Duration(policy.ExpiryDays) * 24 * time.Hour)

@@ -20,6 +20,12 @@
           <span v-else>否</span>
         </template>
       </el-table-column>
+      <el-table-column label="永不过期" width="80">
+        <template slot-scope="{ row }">
+          <el-tag v-if="row.passwordNeverExpires" type="info" size="mini">是</el-tag>
+          <span v-else>否</span>
+        </template>
+      </el-table-column>
       <el-table-column label="失败次数" width="80" align="center">
         <template slot-scope="{ row }">
           <span>{{ row.failedAttempts || 0 }}</span>
@@ -70,6 +76,12 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-switch v-model="userForm.enabled" active-text="启用" inactive-text="禁用" />
+        </el-form-item>
+        <el-form-item label="需修改密码">
+          <el-switch v-model="userForm.mustChangePassword" />
+        </el-form-item>
+        <el-form-item label="密码永不过期">
+          <el-switch v-model="userForm.passwordNeverExpires" />
         </el-form-item>
       </el-form>
       <span slot="footer">
@@ -126,7 +138,9 @@ export default {
         password: '',
         checkPass: '',
         roleId: null,
-        enabled: true
+        enabled: true,
+        mustChangePassword: false,
+        passwordNeverExpires: false
       },
       userRules: {
         username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -196,6 +210,8 @@ export default {
       this.editId = null
       this.dialogTitle = '新增本地账号'
       this.userForm.enabled = true
+      this.userForm.mustChangePassword = false
+      this.userForm.passwordNeverExpires = false
       this.dialogVisible = true
     },
     showEditDialog(row) {
@@ -206,10 +222,12 @@ export default {
       this.userForm.password = ''
       this.userForm.roleId = row.roleId || null
       this.userForm.enabled = row.enabled
+      this.userForm.mustChangePassword = !!row.mustChangePassword
+      this.userForm.passwordNeverExpires = !!row.passwordNeverExpires
       this.dialogVisible = true
     },
     resetDialog() {
-      this.userForm = { username: '', password: '', checkPass: '', roleId: null, enabled: true }
+      this.userForm = { username: '', password: '', checkPass: '', roleId: null, enabled: true, mustChangePassword: false, passwordNeverExpires: false }
       this.submitLoading = false
     },
     async handleSubmit() {
@@ -221,7 +239,9 @@ export default {
           if (this.isEdit) {
             res = await updateLocalUser(this.editId, {
               roleId: this.userForm.roleId,
-              enabled: this.userForm.enabled
+              enabled: this.userForm.enabled,
+              mustChangePassword: this.userForm.mustChangePassword,
+              passwordNeverExpires: this.userForm.passwordNeverExpires
             })
           } else {
             const rsaPassword = rsaEncrypt(this.userForm.password)
@@ -229,7 +249,9 @@ export default {
               username: this.userForm.username,
               password: rsaPassword,
               roleId: this.userForm.roleId,
-              enabled: this.userForm.enabled
+              enabled: this.userForm.enabled,
+              mustChangePassword: this.userForm.mustChangePassword,
+              passwordNeverExpires: this.userForm.passwordNeverExpires
             })
           }
           if (res.code === 200) {

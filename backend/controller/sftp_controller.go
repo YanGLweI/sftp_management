@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sftpbackend/config"
+	jwtpkg "sftpbackend/jwt"
 	"sftpbackend/models"
 	"sftpbackend/tools"
 	"sftpbackend/utils"
@@ -173,6 +174,28 @@ func LoginSFTP(c *gin.Context) {
 					c.JSON(http.StatusOK, gin.H{
 						"code":    400,
 						"message": "密码已过期，请先在平台修改密码",
+					})
+					return
+				}
+
+				// 1.5 需修改密码检查：签发受限改密 token，由前端弹出修改密码弹框（与平台登录一致）
+				if localUser.MustChangePassword {
+					changeToken, tokenErr := jwtpkg.GenerateLimitedToken(sftpLogin.Username)
+					if tokenErr != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{
+							"code":    500,
+							"message": "生成改密凭证失败",
+						})
+						return
+					}
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录需先修改密码", "", "")
+					c.JSON(http.StatusOK, gin.H{
+						"code":    200,
+						"message": "该账号需先修改密码",
+						"data": gin.H{
+							"must_change_password": true,
+							"change_token":         changeToken,
+						},
 					})
 					return
 				}
