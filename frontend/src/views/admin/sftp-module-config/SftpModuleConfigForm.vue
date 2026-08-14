@@ -316,7 +316,8 @@ export default {
 
 <style scoped>
 .module-config-card {
-  max-width: 860px;
+  max-width: 960px;
+  margin: 0 auto;
   border-radius: 12px;
 }
 .module-config-card >>> .el-card__header {

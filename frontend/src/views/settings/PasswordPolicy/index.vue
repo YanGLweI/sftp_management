@@ -1,5 +1,5 @@
 <template>
-  <div class="password-policy-container">
+  <div>
     <el-card class="policy-config-card" shadow="never">
       <!-- 政策信息头部 -->
       <div slot="header" class="policy-header">
@@ -567,9 +567,6 @@ export default {
 </script>
 
 <style scoped>
-.password-policy-container {
-  padding: 20px;
-}
 
 .policy-config-card {
   max-width: 960px;
