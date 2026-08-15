@@ -7,9 +7,12 @@
 | 模块 | 功能 |
 |------|------|
 | **SFTP 用户管理** | 创建/更新/删除/批量删除 SFTP 账号，支持密码、密钥、混合三种认证方式，可选密码过期策略 |
-| **SFTP 文件管理** | 在线浏览目录、上传/下载文件，基于 `pkg/sftp` 实现远程文件操作 |
+| **RBAC 权限管理** | 🌟 基于角色的访问控制：角色列表、菜单权限树、LDAP 安全组绑定、超级管理员保护机制 |
+| **本地账号认证** | 集成本地用户管理系统，支持 PAM 认证验证、Shell 合法性校验、与 LDAP 双因子登录 |
+| **密码策略管理** | 强密码规则强制实施：最小长度、大小写字母、数字、特殊字符、历史密码防复用、过期提醒 |
+| **文件传输队列** | 🚀 专业级文件操作：拖拽上传、批量下载、递归搜索、传输进度跟踪、失败重试机制 |
 | **SFTP 浏览器** | 🌟 专业级文件传输体验：双面板布局、拖拽上传、传输队列、递归搜索、键盘导航、右键菜单、批量操作等 |
-| **LDAP/AD 域认证** | 集成 LDAP/Active Directory 登录，支持 TLS 加密连接与安全组权限控制 |
+| **LDAP/AD 域认证** | 集成 LDAP/Active Directory 登录，支持 TLS 加密连接与安全组权限控制（数据库配置管理）|
 | **本地 PAM 认证** | 支持 RHEL 系统本地账号 PAM 认证，校验 Shell 合法性 |
 | **操作日志审计** | 记录登录日志与操作日志（增/删/改），支持按时间、用户名模糊检索与分页 |
 | **数据看板** | 首页展示近 7 天文件传输量与访问次数统计（ECharts 柱状图），账号总数与月度新增统计 |
@@ -69,16 +72,36 @@ sftp_management/
 │   ├── dao/                        # 数据库连接（GORM + MariaDB）
 │   ├── common/                     # 初始化数据
 │   ├── controller/                 # 控制器层（请求处理）
-│   │   ├── login_controller.go     #   登录认证
+│   │   ├── login_controller.go     #   登录认证（支持 LDAP+ 本地账号 + 双控凭证）
 │   │   ├── user_controller.go      #   SFTP 用户管理
+│   │   ├── localuser_controller.go #   本地用户管理
+│   │   ├── role_controller.go      #   RBAC 角色权限管理
+│   │   ├── password_policy_controler.go # 密码策略管理
+│   │   ├── ldap_config_controller.go   # LDAP 配置管理（数据库持久化）
+│   │   ├── sftp_module_controller.go   # SFTP 模块配置（标签上传/中国联通）
 │   │   ├── sftp_controller.go      #   SFTP 文件操作
 │   │   ├── dashboard_controller.go #   数据看板
-│   │   ├── log_controller.go       #   日志查询
+│   │   ├── log_controller.go       #   平台日志查询
 │   │   ├── contact_controller.go   #   通讯录
 │   │   └── system_controller.go    #   系统安全/更新/调度
-│   ├── models/                     # 数据模型与业务逻辑
+│   ├── models/                     # 数据模型（业务逻辑 + ORM 映射）
+│   │   ├── user.go                 # SFTP 用户
+│   │   ├── localuser.go            # 本地账号
+│   │   ├── role.go                 # 角色与菜单/LDAP 安全组关联
+│   │   ├── password_policy.go      # 密码策略
+│   │   ├── ldap_config.go          # LDAP 配置表（含证书文件名持久化）
+│   │   ├── sftp_module_config.go   # SFTP 模块动态配置表
+│   │   ├── sftp.go                 # SFTP 文件操作相关
+│   │   ├── sftplog.go              # SFTP 操作日志
+│   │   ├── contact.go              # 通讯录
+│   │   ├── log.go                  # 平台操作日志
+│   │   ├── scheduler.go            # 定时任务配置
+│   │   ├── systemcheck.go          # 系统安全加固标准
+│   │   ├── update.go               # 系统更新记录
 │   ├── routers/                    # 路由注册
-│   ├── middleware/                 # JWT 鉴权中间件
+│   ├── middleware/                 # JWT 鉴权中间件 + 双控凭证校验
+│   │   ├── jwtAuth.go              # JWT Token 解析与验签
+│   │   └── dualAuth.go             # 双控账号验证逻辑（临时 Token 管理）
 │   ├── scheduler/                  # 定时任务实现
 │   ├── kaspersky/                  # 卡巴斯基安全监控
 │   ├── report/                     # 报告生成（加固/更新）
@@ -94,24 +117,27 @@ sftp_management/
 └── frontend/                       # Vue 前端
     └── src/
         ├── views/
-        │   ├── login/              # 登录页
-        │   ├── dashboard/          # 数据看板（统计卡片 + 图表）
+        │   ├── login/              # 登录页（RSA 加密 + 双因子）
+        │   ├── dashboard/          # 数据看板（统计卡片 + ECharts 图表）
         │   ├── sftp/               # SFTP 管理
-        │   │   ├── SftpUser/       #   用户管理
-        │   │   ├── Sftplog/        #   操作日志
-        │   │   └── Contacts/       #   通讯录
-        │   ├── file/               # 文件管理
+        │   │   ├── SftpUser/       #   用户管理（增删改查 + 批量删除）
+        │   │   ├── Sftplog/        #   平台操作日志
+        │   │   └── Contacts/       #   通讯邮箱管理
+        │   ├── file/               # 文件管理（临时文件预览）
+        │   ├── log/                # SFTP 日志（按日切割文件查询）
         │   ├── systemSecurity/     # 系统安全
-        │   │   ├── Antivirus/      #   卡巴斯基监控
-        │   │   ├── SystemHardening/#   系统加固
-        │   │   └── SystemUpdate/   #   系统更新
-        │   └── acl/                # 权限管理
+        │   │   ├── Antivirus/      #   卡巴斯基监控（威胁报告/隔离区检查）
+        │   │   ├── SystemHardening/#   系统加固检查（50+ 项安全基线）
+        │   │   └── SystemUpdate/   #   系统自动更新（DNF 包管理器）
+        │   └── settings/           # 平台设置（RBAC + LDAP + 策略）
+        │       ├── Role/           #   角色管理（菜单权限/SFTP 模块权限/LDAP 安全组）
+        │       ├── LocalUser/      #   本地账号（PAM 认证/Shell 校验）
+        │       ├── PasswordPolicy/ #   密码策略（强度规则/历史记录）
+        │       └── LDAPManagement/ #   LDAP 配置（证书上传/绑定 DN/安全组过滤）
         └── components/
-            ├── SftpBrowser/        # SFTP 浏览器核心组件
-            │   ├── index.vue       # 双面板布局（左侧文件列表 + 右侧传输队列）
-            │   ├── browser.css     # 磨砂玻璃风格样式
-            │   └── ...             # 拖拽、聚焦、动效等辅助模块
-        └── ...
+            ├── SftpBrowser/        # SFTP 浏览器核心组件（双面板布局/拖拽/队列）
+            ├── DualVerify/         # 双控账号验证组件（Token 临时登录）
+            └── ChangePasswordDialog/ # 改密弹窗（旧密码验证/新密码加密提交）
 ```
 
 ## 快速开始
@@ -157,18 +183,21 @@ npm run dev
 
 ### 配置说明
 
-`backend/config.yml` 包含以下配置段：
+`backend/config.yml` 包含以下配置段:
 
 | 配置段 | 说明 |
 |--------|------|
-| `system` | 监听端口、运行模式、RSA 私钥路径 |
+| `system` | 监听端口、运行模式、RSA 私钥路径、加密私钥路径 |
+| `sftp_account` | 专用 SFTP 账号（标签上传/中国联通等模块共用） |
+| `hotlabel` | 标签上传允许访问的根路径限制 |
+| `chinaunicom` | 中国联通允许访问的根路径限制 |
 | `ldap` | LDAP 服务器地址、Base DN、TLS、安全组 |
-| `database` | MariaDB 连接信息 |
-| `email` | SMTP 邮件发送配置 |
-| `jwt` | Token 密钥、过期时间 |
-| `script` | Shell 脚本路径 |
-| `logfiles` | SFTP 日志路径 |
-| `scheduler` | 计划任务初始 Cron 表达式 |
+| `database` | MariaDB 连接信息、表前缀、编码方式 |
+| `email` | SMTP 邮件发送配置（含 HTML 正文模板） |
+| `jwt` | Token 密钥、过期时间、签发人 |
+| `script` | Shell 脚本路径（用户管理/系统检查/文件统计） |
+| `logfiles` | SFTP 日志路径（总日志 + 每日切割文件） |
+| `scheduler` | 计划任务初始 Cron 表达式（卡巴斯基/系统更新/加固检查） |
 
 ## SFTP 浏览器功能说明
 

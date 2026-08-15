@@ -4,20 +4,23 @@
 
 ## 功能特性
 
-- **SFTP 用户管理**：支持密码、密钥、混合三种认证方式的用户增删改查，支持批量删除
-- **SFTP 文件管理**：通过 Web 接口实现文件浏览、上传、下载（含目录打包）、重命名、删除等操作
-- **LDAP 集成认证**：对接企业 LDAP/AD 域，实现统一身份认证
-- **JWT 鉴权**：基于 JWT Token 的 API 认证机制
-- **WebSocket 实时通信**：支持实时日志推送等场景
+- **SFTP 用户管理**:支持密码、密钥、混合三种认证方式的用户增删改查，支持批量删除 |
+- **RBAC 权限管理**:
+- **本地账号认证** | 集成本地用户管理系统，支持 PAM 认证验证、Shell 合法性校验、与 LDAP 双因子登录 |
+| **密码策略管理** | 强密码规则强制实施:最小长度、大小写字母、数字、特殊字符、历史密码防复用、过期提醒 |
+- **文件传输队列**: 🚀专业级文件操作：拖拽上传、批量下载、递归搜索、传输进度跟踪、失败重试机制 |
+- **LDAP 集成认证**:对接企业 LDAP/AD 域，实现统一身份认证（数据库配置管理 + 证书持久化） |
+- **JWT 鉴权**：基于 JWT Token 的 API 认证机制 |
+- **WebSocket 实时通信**：支持实时日志推送等场景 |
 - **计划任务调度**：
   - 卡巴斯基安全报告自动发送
   - 卡巴斯基隔离区定时检查
   - 系统自动更新
   - 系统安全加固检查
-  - 更新报告 / 加固报告定时发送
-- **操作日志审计**：记录用户登录及所有操作行为
-- **邮件通知**：账号创建后自动发送 SFTP 连接信息到用户邮箱
-- **RSA 加密**：敏感密码传输采用 RSA 非对称加密
+  - 更新报告/加固报告定时发送
+- **操作日志审计**：记录用户登录及所有操作行为 |
+- **邮件通知**:账号创建后自动发送 SFTP 连接信息到用户邮箱
+- **RSA 加密**:敏感密码传输采用 RSA 非对称加密
 - **优雅启停**：支持 HTTP 服务和调度器的优雅关闭
 
 ## 技术栈
@@ -45,15 +48,35 @@
 ├── controller/          # 控制器层（API 处理）
 │   ├── login_controller.go
 │   ├── user_controller.go
+│   ├── localuser_controller.go     # 本地用户管理
+│   ├── role_controller.go          # RBAC 角色权限管理
+│   ├── password_policy_controler.go  # 密码策略管理
+│   ├── ldap_config_controller.go       # LDAP 配置管理
+│   ├── sftp_module_controller.go   # SFTP 模块配置管理
 │   ├── sftp_controller.go
 │   ├── dashboard_controller.go
 │   ├── log_controller.go
 │   ├── contact_controller.go
 │   └── system_controller.go
-├── models/              # 数据模型层（业务逻辑）
+├── models/              # 数据模型层（业务逻辑 + ORM 映射）
+│   ├── user.go          # SFTP 用户
+│   ├── localuser.go     # 本地账号
+│   ├── role.go          # 角色与菜单/LDAP 安全组关联
+│   ├── password_policy.go       # 密码策略表
+│   ├── ldap_config.go           # LDAP 配置表（含证书文件名持久化）
+│   ├── sftp_module_config.go    # SFTP 模块动态配置表
+│   ├── sftp.go        # SFTP 文件操作相关
+│   ├── sftplog.go     # SFTP 操作日志
+│   ├── contact.go     # 通讯录
+│   ├── log.go         # 平台操作日志
+│   ├── scheduler.go   # 定时任务配置
+│   ├── systemcheck.go # 系统安全加固标准
+│   └── update.go      # 系统更新记录
 ├── dao/                 # 数据库连接与初始化
 ├── routers/             # 路由注册
-├── middleware/          # JWT 认证中间件
+├── middleware/          # JWT 认证中间件 + 双控凭证校验
+│   ├── jwtAuth.go       # JWT Token 解析与验签
+│   └── dualAuth.go      # 双控账号验证逻辑（临时 Token 管理）
 ├── scheduler/           # 计划任务（定时调度）
 ├── script/              # Shell 脚本（用户管理、系统检查等）
 ├── utils/               # 工具包（SFTP 连接池、邮件发送）
@@ -101,22 +124,32 @@ go build -o sftpbackend .
 | 配置项 | 说明 |
 |--------|------|
 | `system.port` | HTTP 服务监听端口（默认 8888） |
+| `system.rsa-private-key` | RSA 私钥路径（用于解密前端敏感信息） |
+| `system.config-key` | config.yml 加密字段解密密钥路径 |
 | `database.*` | MariaDB/MySQL 数据库连接配置 |
 | `ldap.*` | LDAP/AD 域认证配置 |
 | `email.*` | SMTP 邮件发送配置 |
 | `jwt.*` | JWT 密钥及过期时间 |
-| `script.*` | Shell 脚本路径 |
+| `script.*` | Shell 脚本路径（用户管理/系统检查/文件统计） |
 | `scheduler.*` | 计划任务 Cron 表达式 |
+| `sftp_account` | 专用 SFTP 账号（标签上传/中国联通等模块共用） |
+| `hotlabel` | 标签上传允许访问的根路径限制 |
+| `chinaunicom` | 中国联通允许访问的根路径限制 |
 
 ## API 模块
 
 | 模块 | 路径前缀 | 说明 |
 |------|----------|------|
-| 登录认证 | `/api/login` | 用户登录、LDAP 认证 |
-| 用户管理 | `/api/user` | SFTP 账号增删改查 |
+| 登录认证 | `/api/login` | 用户登录、LDAP 认证、本地账号验证 |
+| SFTP 用户管理 | `/api/user` | SFTP 账号增删改查 |
+| 本地用户管理 | `/api/localuser` | 本地账号增删改查 |
+| RBAC 权限管理 | `/api/role` | 角色列表、菜单权限树、LDAP 安全组绑定 |
+| 密码策略 | `/api/password-policy` | 密码规则配置、历史密码检查 |
+| LDAP 配置 | `/api/ldap-config` | LDAP 服务器配置、证书管理、安全组过滤 |
+| SFTP 模块 | `/api/sftp-module` | 标签上传/中国联通配置管理 |
 | SFTP 操作 | `/api/sftp` | 文件浏览、上传下载、目录管理 |
 | 看板 | `/api/dashboard` | 数据统计概览 |
-| 日志 | `/api/log` | 操作日志查询 |
+| 日志 | `/api/log` | 平台操作日志查询 |
 | 通讯录 | `/api/contact` | 联系人管理 |
 | 系统管理 | `/api/system` | 安全加固、系统更新、计划任务管理 |
 
