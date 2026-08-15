@@ -42,6 +42,7 @@ func main() {
 		&models.PasswordHistory{},
 		&models.PasswordPolicy{},
 		&models.SFTPModuleConfig{}, // 新增：SFTP 模块配置表
+		&models.LDAPConfig{},        // 新增：LDAP 配置表（包含 CertFilename 字段）
 	)
 	if err != nil {
 		logrus.Fatal("数据库表迁移失败:", err)
@@ -58,6 +59,9 @@ func main() {
 
 	// 确保超级管理员角色拥有新增的 SFTP 模块管理菜单权限（兼容已有部署）
 	common.EnsureSuperAdminSftpModuleMenus()
+
+	// 确保超级管理员角色拥有新增的 LDAP 管理菜单权限（兼容已有部署）
+	common.EnsureSuperAdminLDAPManagementMenu()
 
 	// 启动调度器
 	go scheduler.Run()

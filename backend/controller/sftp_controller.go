@@ -117,10 +117,9 @@ func LoginSFTP(c *gin.Context) {
 			}
 
 			if loginType == models.LoginTypeLDAP {
-				// LDAP 域控验证（安全组 ldap.sftp_security_group_dn）通过后，读取公共SFTP账号登录并绑定模块根路径
+				// LDAP 域控验证（安全组通过角色配置）通过后，读取公共 SFTP 账号登录并绑定模块根路径
 				// 1. LDAP 验证域账号 + 安全组成员身份
-				ldapUserInfo, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(
-					sftpLogin.Username, decryptedPassword, config.GlobalConfig.LDAP.SftpSecurityGroupDN)
+				ldapUserInfo, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(sftpLogin.Username, decryptedPassword, "")
 				if ldapErr != nil {
 					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 域控验证失败: "+ldapErr.Error(), "", "")
 					c.JSON(http.StatusOK, gin.H{
@@ -363,8 +362,7 @@ func DualVerify(c *gin.Context) {
 	}
 
 	// 6. LDAP 验证双控账号（须属于产业部安全组）
-	_, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(
-		req.Username, decryptedPassword, config.GlobalConfig.LDAP.SftpSecurityGroupDN)
+	_, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(req.Username, decryptedPassword, "")
 	if ldapErr != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"code":    statusCode,

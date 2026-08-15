@@ -128,3 +128,31 @@ export function validatePassword(data) {
     data
   })
 }
+
+// ========== LDAP 管理相关 API ==========
+
+// 获取 LDAP 配置
+export function getLDAPConfig() {
+  return request({
+    url: '/settings/ldap/config',
+    method: 'get'
+  })
+}
+
+// 保存 LDAP 配置
+export function saveLDAPConfig(data) {
+  return request({
+    url: '/settings/ldap/config',
+    method: 'put',
+    data
+  })
+}
+
+// 测试 LDAP 连接
+export function testLDAPConnection(data) {
+  return request({
+    url: '/settings/ldap/test',
+    method: 'post',
+    data
+  })
+}

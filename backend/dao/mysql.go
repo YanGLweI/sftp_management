@@ -73,3 +73,8 @@ func Close() {
 		fmt.Println("关闭数据库连接失败:", err)
 	}
 }
+
+// Now 返回当前时间戳（秒）
+func Now() int64 {
+	return time.Now().Unix()
+}

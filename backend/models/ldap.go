@@ -2,12 +2,10 @@ package models
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net"
-	"os"
-	"sftpbackend/config"
 	"sftpbackend/dao"
+	"sftpbackend/tools"
 	"slices"
 	"time"
 	"unicode"
@@ -36,49 +34,69 @@ AuthenticateLDAPWithGroup 通过LDAP验证用户，并检查其安全组是否�
   - error: 错误信息
 */
 func AuthenticateLDAPWithGroup(username, password, securityGroupDN string) (map[string][]string, int, error) {
-	config := config.GlobalConfig.LDAP
+	// 从数据库获取 LDAP 配置
+	dbConfig, err := GetLDAPConfig()
+	if err != nil {
+		return nil, 500, fmt.Errorf("获取 LDAP 配置失败：%v", err)
+	}
+	
+	// 检查配置是否完整
+	if dbConfig.Server == "" || dbConfig.BaseDN == "" {
+		return nil, 500, fmt.Errorf("LDAP 配置不完整，请先在系统设置中配置 LDAP 连接信息")
+	}
+	
 	var l *ldap.Conn
 	var ldapErr error
-
+	
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
 	}
-
-	if config.UseTLS {
-		caCert, err := os.ReadFile(config.CertPath)
-		if err != nil {
-			return nil, 500, fmt.Errorf("无法读取证书文件: %v", err)
+	
+	if dbConfig.UseTLS {
+		// 如果配置了 CA 证书，使用 Base64 解码的证书（兼容 PEM/DER）
+		if dbConfig.CertBase64 != "" {
+			certPool, err := ParseCACertPool(dbConfig.CertBase64)
+			if err != nil {
+				return nil, 500, fmt.Errorf("CA 证书解析失败：%v", err)
+			}
+			l, ldapErr = ldap.DialURL(dbConfig.Server,
+				ldap.DialWithDialer(dialer),
+				ldap.DialWithTLSConfig(&tls.Config{
+					InsecureSkipVerify: dbConfig.Insecure,
+					RootCAs:            certPool,
+					MinVersion:         tls.VersionTLS12,
+				}))
+		} else {
+			// 没有配置 CA 证书但启用了 TLS
+			return nil, 500, fmt.Errorf("启用 TLS 时必须上传 CA 证书")
 		}
-		cert, err := x509.ParseCertificate(caCert)
-		if err != nil {
-			return nil, 500, fmt.Errorf("无法解析证书: %v", err)
-		}
-		certPool := x509.NewCertPool()
-		certPool.AddCert(cert)
-		l, ldapErr = ldap.DialURL(config.Server,
-			ldap.DialWithDialer(dialer),
-			ldap.DialWithTLSConfig(&tls.Config{
-				InsecureSkipVerify: config.Insecure,
-				RootCAs:            certPool,
-				MinVersion:         tls.VersionTLS12,
-			}))
 	} else {
-		l, ldapErr = ldap.DialURL(config.Server, ldap.DialWithDialer(dialer))
+		l, ldapErr = ldap.DialURL(dbConfig.Server, ldap.DialWithDialer(dialer))
 	}
 
 	if ldapErr != nil {
-		return nil, 504, fmt.Errorf("无法连接到LDAP服务器: %v", ldapErr)
+		return nil, 504, fmt.Errorf("无法连接到 LDAP 服务器：%v", ldapErr)
 	}
 	defer l.Close()
-
-	if err := l.Bind(config.Username, config.Password); err != nil {
-		return nil, 500, fmt.Errorf("LDAP管理员绑定失败: %v", err)
+	
+	// 从数据库读取并解密用户名和密码
+	usernamePlaintext, err := tools.Decrypt(dbConfig.Username)
+	if err != nil {
+		return nil, 500, fmt.Errorf("管理员用户名解密失败：%v", err)
+	}
+	passwordPlaintext, err := tools.Decrypt(dbConfig.Password)
+	if err != nil {
+		return nil, 500, fmt.Errorf("管理员密码解密失败：%v", err)
+	}
+	
+	if err := l.Bind(usernamePlaintext, passwordPlaintext); err != nil {
+		return nil, 500, fmt.Errorf("LDAP 管理员绑定失败：%v", err)
 	}
 
 	searchRequest := ldap.NewSearchRequest(
-		config.BaseDN,
+		dbConfig.BaseDN,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf(config.UserFilter, username),
+		fmt.Sprintf(dbConfig.UserFilter, username),
 		[]string{"cn", "WhenChanged", "memberOf"},
 		nil,
 	)

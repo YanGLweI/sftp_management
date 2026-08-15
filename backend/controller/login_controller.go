@@ -45,7 +45,7 @@ func Login(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"code":    400,
-			"message": err.Error(),
+			"message": "密码解密失败：" + err.Error(),
 		})
 		return
 	}

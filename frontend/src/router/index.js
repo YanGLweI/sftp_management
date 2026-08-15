@@ -183,6 +183,12 @@ export const constantRoutes = [
         component: () => import('@/views/settings/PasswordPolicy'),
         meta: { title: '密码策略' },
       },
+      {
+        path: 'ldap',
+        name: 'LDAPManagement',
+        component: () => import('@/views/settings/LDAPManagement'),
+        meta: { title: 'LDAP 管理' },
+      },
     ],
   },
   // ! SFTP 管理（新增）

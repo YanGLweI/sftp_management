@@ -14,6 +14,17 @@ import (
 )
 
 func InitData() {
+	// ========== 初始化LDAP配置默认数据（单例，表为空时创建） ==========
+	var ldapConfigCount int64
+	dao.DB.Model(&models.LDAPConfig{}).Count(&ldapConfigCount)
+	if ldapConfigCount == 0 {
+		if err := models.CreateLDAPConfig("", ""); err != nil {
+			logrus.Printf("InitData Create LDAPConfig failed: %v", err)
+		} else {
+			logrus.Println("InitData Create LDAPConfig success")
+		}
+	}
+
 	// ========== 新增Scheduler调度器数据初始化逻辑 ==========
 	newScheduler := make([]*models.Scheduler, 0)
 	scheduler := []*models.Scheduler{
@@ -92,39 +103,81 @@ func InitData() {
 	var localUserCount int64
 	dao.DB.Model(&models.LocalUser{}).Count(&localUserCount)
 	if localUserCount > 0 {
+		// 检查是否存在默认 admin 账号
+		var admin models.LocalUser
+		err := dao.DB.Model(&models.LocalUser{}).Where("username = ?", "admin").First(&admin).Error
+		if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Println("InitData: 检测到缺少默认 admin 账号，将重新创建")
+		} else if err == nil {
+			return // admin 账号已存在，直接返回
+		}
+	}
+	
+	// 获取或创建超级管理员角色
+	var superRole models.Role
+	err := dao.DB.Where("name = ?", "超级管理员").First(&superRole).Error
+	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+		// 如果不存在则创建
+		superRole = models.Role{
+			Name:        "超级管理员",
+			Description: "拥有系统所有权限",
+		}
+		if err := dao.DB.Create(&superRole).Error; err != nil {
+			logrus.Printf("InitData Create super role failed: %v", err)
+			return
+		}
+		logrus.Println("InitData Create super role success (new)")
+	} else if err == nil {
+		// 已存在，使用现有的角色 ID
+		logrus.Println("InitData Use existing super role")
+	} else {
+		logrus.Printf("InitData query super role error: %v", err)
 		return
 	}
-
-	// 创建超级管理员角色（拥有所有菜单权限）
-	superRole := &models.Role{
-		Name:        "超级管理员",
-		Description: "拥有系统所有权限",
-	}
-	superRole.Menus = []models.RoleMenu{
+	
+	// 定义需要创建的菜单权限
+	requiredMenus := []struct {
+		RouteName string
+		MenuTitle string
+	}{
 		{RouteName: "Dashboard", MenuTitle: "首页"},
 		{RouteName: "Sftp", MenuTitle: "传输管理"},
-		{RouteName: "SftpUser", MenuTitle: "账号管理", ParentID: nil},
-		{RouteName: "Contacts", MenuTitle: "通讯邮箱", ParentID: nil},
+		{RouteName: "SftpUser", MenuTitle: "账号管理"},
+		{RouteName: "Contacts", MenuTitle: "通讯邮箱"},
 		{RouteName: "Log", MenuTitle: "日志管理"},
-		{RouteName: "PlatformLog", MenuTitle: "平台日志", ParentID: nil},
-		{RouteName: "SftpLog", MenuTitle: "SFTP日志", ParentID: nil},
+		{RouteName: "PlatformLog", MenuTitle: "平台日志"},
+		{RouteName: "SftpLog", MenuTitle: "SFTP 日志"},
 		{RouteName: "System", MenuTitle: "系统安全"},
-		{RouteName: "SystemUpdate", MenuTitle: "系统更新", ParentID: nil},
-		{RouteName: "Antivirus", MenuTitle: "病毒管理", ParentID: nil},
-		{RouteName: "SystemHardening", MenuTitle: "系统加固", ParentID: nil},
+		{RouteName: "SystemUpdate", MenuTitle: "系统更新"},
+		{RouteName: "Antivirus", MenuTitle: "病毒管理"},
+		{RouteName: "SystemHardening", MenuTitle: "系统加固"},
 		{RouteName: "Settings", MenuTitle: "平台设置"},
-		{RouteName: "RoleManagement", MenuTitle: "角色管理", ParentID: nil},
-		{RouteName: "LocalUserManagement", MenuTitle: "本地账号", ParentID: nil},
-		{RouteName: "PasswordPolicy", MenuTitle: "密码策略", ParentID: nil},
-		{RouteName: "SftpModuleManagement", MenuTitle: "SFTP 管理", ParentID: nil},
-		{RouteName: "HotLabelConfig", MenuTitle: "标签上传配置", ParentID: nil},
-		{RouteName: "ChinaUnicomConfig", MenuTitle: "中国联通配置", ParentID: nil},
+		{RouteName: "RoleManagement", MenuTitle: "角色管理"},
+		{RouteName: "LocalUserManagement", MenuTitle: "本地账号"},
+		{RouteName: "PasswordPolicy", MenuTitle: "密码策略"},
+		{RouteName: "SftpModuleManagement", MenuTitle: "SFTP 管理"},
+		{RouteName: "HotLabelConfig", MenuTitle: "标签上传配置"},
+		{RouteName: "ChinaUnicomConfig", MenuTitle: "中国联通配置"},
+		{RouteName: "LDAPManagement", MenuTitle: "LDAP 管理"},
 	}
-	if err := dao.DB.Create(superRole).Error; err != nil {
-		logrus.Printf("InitData Create super role failed: %v", err)
-		return
+	
+	// 添加超级管理员角色的菜单权限（如果尚未存在）
+	for _, menu := range requiredMenus {
+		var count int64
+		dao.DB.Model(&models.RoleMenu{}).Where("role_id = ? AND route_name = ?", superRole.ID, menu.RouteName).Count(&count)
+		if count == 0 {
+			if err := dao.DB.Create(&models.RoleMenu{
+				RoleID:    superRole.ID,
+				RouteName: menu.RouteName,
+				MenuTitle: menu.MenuTitle,
+			}).Error; err != nil {
+				logrus.Printf("InitData Create role menu %s failed: %v", menu.RouteName, err)
+			} else {
+				logrus.Printf("InitData Add role menu: %s", menu.MenuTitle)
+			}
+		}
 	}
-
+	
 	// 创建默认管理员 admin
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin1234567890."), bcrypt.DefaultCost)
 	if err != nil {
@@ -214,6 +267,41 @@ func InitData() {
 			log.Printf("InitData Create SystemSecurityStandard failed: %v", err)
 		} else {
 			log.Println("InitData Create SystemSecurityStandard success")
+		}
+	}
+}
+
+// EnsureSuperAdminLDAPManagementMenu 确保超级管理员角色拥有新增的 LDAP 管理菜单权限
+// 兼容已有部署：旧版本的超级管理员角色菜单列表中不包含新菜单，此处补充
+func EnsureSuperAdminLDAPManagementMenu() {
+	role, err := models.GetRoleByName("超级管理员")
+	if err != nil {
+		logrus.Printf("EnsureSuperAdminLDAPManagementMenu: 超级管理员角色不存在：%v", err)
+		return
+	}
+
+	// 需要确保存在的菜单
+	requiredMenus := []struct {
+		RouteName string
+		MenuTitle string
+	}{
+		{RouteName: "LDAPManagement", MenuTitle: "LDAP 管理"},
+	}
+
+	// 补充缺失的菜单（直接查询 RoleMenu 表判断是否存在，避免 Preload 缺失导致重复插入）
+	for _, m := range requiredMenus {
+		var count int64
+		dao.DB.Model(&models.RoleMenu{}).Where("role_id = ? AND route_name = ?", role.ID, m.RouteName).Count(&count)
+		if count == 0 {
+			if err := dao.DB.Create(&models.RoleMenu{
+				RoleID:    role.ID,
+				RouteName: m.RouteName,
+				MenuTitle: m.MenuTitle,
+			}).Error; err != nil {
+				logrus.Printf("EnsureSuperAdminLDAPManagementMenu: 添加菜单 %s 失败：%v", m.RouteName, err)
+			} else {
+				logrus.Printf("EnsureSuperAdminLDAPManagementMenu: 为超级管理员添加菜单 %s", m.RouteName)
+			}
 		}
 	}
 }

@@ -37,6 +37,15 @@ func registerSettingsRouter(r *gin.Engine) {
 		// 密码校验（修改密码弹框共用，仅鉴权）
 		settingsGroup.POST("/password-policy/validate", controller.ValidatePassword)
 
+		// LDAP 配置管理（超级管理员专用）
+		ldapConfig := settingsGroup.Group("/ldap")
+		ldapConfig.Use(middleware.RequireRoute("LDAPManagement"))
+		{
+			ldapConfig.GET("/config", controller.LdapConfigController.GetLDAPConfig)
+			ldapConfig.PUT("/config", controller.LdapConfigController.SaveLDAPConfig)
+			ldapConfig.POST("/test", controller.LdapConfigController.TestLDAPConnection)
+		}
+
 		// SFTP 模块配置管理（新增）
 		settingsGroup.GET("/sftp-modules/all", middleware.RequireRoute("SftpModuleManagement"), controller.GetAllModuleConfigs)
 		settingsGroup.GET("/sftp-modules/:name", middleware.RequireRoute("SftpModuleManagement"), controller.GetModuleConfig)

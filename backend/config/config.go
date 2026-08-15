@@ -49,25 +49,11 @@ type EmailConfig struct {
 	Tos      []string `yaml:"tos"`     // 接收方邮箱列表
 }
 
-// JWTConfig结构体用于存储JWT相关配置信息
+// JWTConfig 结构体用于存储 JWT 相关配置信息
 type JWTConfig struct {
 	Secret string `yaml:"secret"`
 	Expire int    `yaml:"expire"`
 	Issuer string `yaml:"issuer"`
-}
-
-// LDAPConfig结构体用于存储LDAP相关配置信息
-type LDAPConfig struct {
-	Server              string `yaml:"server"`
-	BaseDN              string `yaml:"base_dn"`
-	UseTLS              bool   `yaml:"use_tls"`
-	Insecure            bool   `yaml:"insecure"`
-	UserFilter          string `yaml:"user_filter"`
-	Username            string `yaml:"username"`
-	Password            string `yaml:"password"`
-	SecurityGroupDN     string `yaml:"security_group_dn"`      // 平台登录安全组
-	SftpSecurityGroupDN string `yaml:"sftp_security_group_dn"` // SFTP相关模块安全组（标签上传等），后续SFTP模块可通用
-	CertPath            string `yaml:"cert_path"`              // 可选，客户端证书路径
 }
 
 // 脚本路径
@@ -134,18 +120,17 @@ type SchedulerConfig struct {
 	HardeningReportTime string `yaml:"hardening_report_time"`
 }
 
-// Config结构体用于整体存储配置信息，包含系统和数据库配置
+// Config 结构体用于整体存储配置信息，包含系统和数据库配置
 type Config struct {
 	System      SystemConfig      `yaml:"system"`
 	Database    DatabaseConfig    `yaml:"database"`
 	Email       EmailConfig       `yaml:"email"`
 	JWT         JWTConfig         `yaml:"jwt"`
-	LDAP        LDAPConfig        `yaml:"ldap"`
 	Script      ScriptPath        `yaml:"script"`
 	LogFiles    LogFiles          `yaml:"logfiles"`
 	SFTP        SFTPConfig        `yaml:"sftp"`
 	LocalUser   LocalUserConf     `yaml:"localuser"`
-	SftpAccount SftpAccountConfig `yaml:"sftp_account"` // 公共SFTP服务账号
+	SftpAccount SftpAccountConfig `yaml:"sftp_account"` // 公共 SFTP 服务账号
 	HotLabel    HotLabelConfig    `yaml:"hotlabel"`
 	ChinaUnicom ChinaUnicomConfig `yaml:"chinaunicom"`
 	Scheduler   SchedulerConfig   `yaml:"scheduler"`

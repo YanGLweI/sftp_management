@@ -35,6 +35,7 @@ func GetAllMenus(c *gin.Context) {
 			{"routeName": "RoleManagement", "menuTitle": "角色管理"},
 			{"routeName": "LocalUserManagement", "menuTitle": "本地账号"},
 			{"routeName": "PasswordPolicy", "menuTitle": "密码策略"},
+			{"routeName": "LDAPManagement", "menuTitle": "LDAP 管理"},
 		}},
 		{"routeName": "SftpModuleManagement", "menuTitle": "SFTP 管理", "icon": "el-icon-cpu", "children": []gin.H{
 			{"routeName": "HotLabelConfig", "menuTitle": "标签上传配置"},

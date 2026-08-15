@@ -104,7 +104,6 @@
                   plain
                   icon="el-icon-edit" 
                   @click="showEditDialog(row)"
-                  :disabled="row.name === '超级管理员'"
                 >
                   编辑
                 </el-button>
