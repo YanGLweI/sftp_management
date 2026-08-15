@@ -3,63 +3,59 @@
     <el-card>
       <div slot="header" class="header">
         <div class="search-header">
-          <span>线上热门搜索</span>
-          <el-dropdown>
-            <span class="el-dropdown-link">
-              <i class="el-icon-more"></i>
-            </span>
-            <el-dropdown-menu slot="dropdown">
-              <el-dropdown-item>mia</el-dropdown-item>
-              <el-dropdown-item>liumin</el-dropdown-item>
-              <el-dropdown-item>ylw</el-dropdown-item>
-              <el-dropdown-item>longliuming</el-dropdown-item>
-              <el-dropdown-item>wangpeng</el-dropdown-item>
-            </el-dropdown-menu>
-          </el-dropdown>
+          <span>活跃用户 Top10</span>
         </div>
       </div>
       <div>
-        <el-row :gutter="10">
-          <el-col :span="12">
-            <LineCharts></LineCharts>
-          </el-col>
-          <el-col :span="12">
-            <LineCharts></LineCharts>
-          </el-col>
-        </el-row>
-        <!-- table表格 -->
-        <el-table :data="tableData" border style="width: 100%">
-          <el-table-column type="index" label="排名" width="80" align="center">
-          </el-table-column>
-          <el-table-column label="搜索关键字" width="180">
-          </el-table-column>
-          <el-table-column label="用户数" sortable>
-          </el-table-column>
-          <el-table-column label="周涨幅" sortable>
-          </el-table-column>
-        </el-table>
-        <!-- 分页器 -->
-        <el-pagination
-          align="center"
-          layout="prev, pager, next"
-          :total="1000">
-        </el-pagination>
+        <!-- 排行榜列表展示 -->
+        <div class="rank-list">
+          <div v-for="(user, index) in activeUsers" :key="index" class="rank-item">
+            <span class="rank-index" :class="'rank-' + (index + 1)">
+              {{ index + 1 }}
+            </span>
+            <span class="rank-name">{{ user.username }}</span>
+            <span class="rank-value">{{ user.count }}</span>
+          </div>
+          <!-- 空状态提示 -->
+          <div v-if="!activeUsers || activeUsers.length === 0" class="empty-tip">
+            暂无数据
+          </div>
+        </div>
       </div>
     </el-card>
   </div>
 </template>
 
 <script>
-import LineCharts from "./lineCharts";
+import { reqActiveUsersTop10 } from '@/api/dashboard/dashboard.js'
+
 export default {
   name: "Search",
   data() {
     return {
-      tableData:[{}]
+      activeUsers: []  // 活跃用户列表
     }
   },
-  components: { LineCharts },
-};
+  mounted() {
+    this.fetchActiveUsers()
+  },
+  methods: {
+    async fetchActiveUsers() {
+      try {
+        const res = await reqActiveUsersTop10()
+        if (res.code === 200) {
+          this.activeUsers = res.data.map(item => ({
+            username: item.username,
+            count: item.count
+          }))
+        }
+      } catch (error) {
+        console.error('加载活跃用户失败:', error)
+        this.activeUsers = []
+      }
+    }
+  }
+}
 </script>
 
 <style scoped>
@@ -67,11 +63,59 @@ export default {
   border-bottom: 1px solid #eee;
   padding: 5px 0;
 }
+
 .search-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
-.el-dropdown-link {
-  cursor: pointer;
+
+/* 新增排行榜样式 */
+.rank-list {
+  margin-top: 10px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;  /* 条目均匀分布，填满卡片高度 */
+}
+
+.rank-item {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.rank-index {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #ddd;
+  color: #333;
+  text-align: center;
+  line-height: 30px;
+  margin-right: 15px;
+  font-weight: bold;
+}
+
+.rank-index.rank-1 { background: #ff4757; color: white; }
+.rank-index.rank-2 { background: #ffa502; color: white; }
+.rank-index.rank-3 { background: #2ed573; color: white; }
+
+.rank-name {
+  flex: 1;
+  font-size: 14px;
+}
+
+.rank-value {
+  font-size: 14px;
+  color: #666;
+}
+
+.empty-tip {
+  text-align: center;
+  color: #999;
+  padding: 30px 0;
+  font-size: 14px;
 }
 </style>

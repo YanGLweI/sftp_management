@@ -15,6 +15,7 @@ type SFTPModuleConfig struct {
 	LoginType       string `json:"loginType" gorm:"column:login_type;type:varchar(32);not null"`              // local, ldap
 	EnabledRoles    string `json:"enabledRoles" gorm:"column:enabled_roles;type:json;not null"`               // JSON 数组，存储角色 ID 列表
 	DualAuthEnabled bool   `json:"dualAuthEnabled" gorm:"column:dual_auth_enabled;type:tinyint"`              // 是否启用双控
+	Enabled         bool   `json:"enabled" gorm:"column:enabled;type:tinyint;default:0"`                     // 模块是否启用 (默认 false)
 }
 
 const (
@@ -66,8 +67,8 @@ func CreateSFTPModuleConfig(config *SFTPModuleConfig) error {
 // InitDefaultConfigs 初始化默认配置（支持并发）
 func InitDefaultConfigs() error {
 	configs := []SFTPModuleConfig{
-		{ModuleName: ModuleNameHotLabel, LoginType: LoginTypeLDAP, EnabledRoles: "[]", DualAuthEnabled: false},
-		{ModuleName: ModuleNameChinaUnicom, LoginType: LoginTypeLDAP, EnabledRoles: "[]", DualAuthEnabled: true},
+		{ModuleName: ModuleNameHotLabel, LoginType: LoginTypeLDAP, EnabledRoles: "[]", DualAuthEnabled: false, Enabled: false},
+		{ModuleName: ModuleNameChinaUnicom, LoginType: LoginTypeLDAP, EnabledRoles: "[]", DualAuthEnabled: true, Enabled: false},
 	}
 	
 	for i := range configs {

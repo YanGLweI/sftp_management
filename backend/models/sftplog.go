@@ -1,7 +1,11 @@
 package models
 
 import (
+	"os"
+	"path/filepath"
+	"sftpbackend/config"
 	"sftpbackend/dao"
+	"strings"
 	"time"
 )
 
@@ -83,4 +87,130 @@ func (l *SftpLog) GetSftpLogList(page, limit int, date, username string) (logsli
 		return nil, 0, err
 	}
 	return logslist, totalCount, nil
+}
+
+// ============ P0: 核心数据统计方法 ============
+
+// GetTotalLoginCount 获取累计登录总次数（访问量总数）
+func GetTotalLoginCount() (int64, error) {
+	var count int64
+	err := dao.DB.Model(&SftpLog{}).
+		Where("action = ?", "Login").
+		Count(&count).Error
+	return count, err
+}
+
+// GetTotalTransferCount 获取累计传输总次数（传输数总数，Upload + Download）
+func GetTotalTransferCount() (int64, error) {
+	var count int64
+	err := dao.DB.Model(&SftpLog{}).
+		Where("action IN ?", []string{"Upload", "Download"}).
+		Count(&count).Error
+	return count, err
+}
+
+// GetTodayLoginCount 获取今日登录总次数
+func GetTodayLoginCount() (int64, error) {
+	var count int64
+	today := time.Now().Format("2006-01-02")
+	err := dao.DB.Model(&SftpLog{}).
+		Where("created_at LIKE ?", today+"%").
+		Where("action = ?", "Login").
+		Count(&count).Error
+	return count, err
+}
+
+// GetYesterdayLoginCount 获取昨日登录总次数（用于计算增长率）
+func GetYesterdayLoginCount() (int64, error) {
+	var count int64
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	err := dao.DB.Model(&SftpLog{}).
+		Where("created_at LIKE ?", yesterday+"%").
+		Where("action = ?", "Login").
+		Count(&count).Error
+	return count, err
+}
+
+// GetTodayTransferCount 获取今日传输总次数（Upload + Download）
+func GetTodayTransferCount() (int64, error) {
+	var count int64
+	today := time.Now().Format("2006-01-02")
+	err := dao.DB.Model(&SftpLog{}).
+		Where("created_at LIKE ?", today+"%").
+		Where("action IN ?", []string{"Upload", "Download"}).
+		Count(&count).Error
+	return count, err
+}
+
+// GetYesterdayTransferCount 获取昨日传输总次数（用于计算增长率）
+func GetYesterdayTransferCount() (int64, error) {
+	var count int64
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	err := dao.DB.Model(&SftpLog{}).
+		Where("created_at LIKE ?", yesterday+"%").
+		Where("action IN ?", []string{"Upload", "Download"}).
+		Count(&count).Error
+	return count, err
+}
+
+// GetAuthMethodDistribution 获取认证方式分布（基于 SFTP 日志真实认证记录）
+// 返回：map[string]int，key="密码登录"/"密钥登录"
+func GetAuthMethodDistribution() (map[string]int, error) {
+	result := make(map[string]int)
+	passwordCount, keyCount := countAuthMethodsFromLogs()
+	result["密码登录"] = passwordCount
+	result["密钥登录"] = keyCount
+	return result, nil
+}
+
+// countAuthMethodsFromLogs 从今日日志与历史每日日志中统计密码/密钥登录次数
+// 日志格式：sshd: Accepted password for xxx ... / Accepted publickey for xxx ...
+func countAuthMethodsFromLogs() (passwordCount, keyCount int) {
+	// 收集日志文件：今日日志 + 历史每日日志
+	var files []string
+	logFile := config.GlobalConfig.LogFiles.LogFile
+	dailyLogFile := config.GlobalConfig.LogFiles.DailyLogFile
+	if logFile != "" {
+		files = append(files, logFile)
+	}
+	if dailyLogFile != "" {
+		// daily_logfile 格式如 /data/sftplogs/sftp.log-%s，转为 glob 模式匹配历史文件
+		dir := filepath.Dir(dailyLogFile)
+		pattern := filepath.Join(dir, "sftp.log-*")
+		matches, err := filepath.Glob(pattern)
+		if err == nil {
+			files = append(files, matches...)
+		}
+	}
+
+	// 统计每份日志中的认证记录
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		content := string(data)
+		passwordCount += strings.Count(content, "Accepted password")
+		keyCount += strings.Count(content, "Accepted publickey")
+	}
+	return passwordCount, keyCount
+}
+
+// ActiveUserStat 活跃用户统计结构体
+type ActiveUserStat struct {
+	Username string `json:"username"`
+	Count    int64  `json:"count"`
+}
+
+// GetActiveUsersTop10 获取活跃用户 Top10（按传输操作次数排序）
+func GetActiveUsersTop10() ([]ActiveUserStat, error) {
+	var stats []ActiveUserStat
+	err := dao.DB.Model(&SftpLog{}).
+		Select("username, COUNT(*) as count").
+		Where("action IN ?", []string{"Upload", "Download"}).
+		Group("username").
+		Order("COUNT(*) DESC").
+		Limit(10).
+		Scan(&stats).Error
+	return stats, err
 }

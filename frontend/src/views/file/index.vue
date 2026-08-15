@@ -54,9 +54,13 @@
             </el-form-item>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="标签上传" name="hotlabel">
+        <!-- 标签上传 Tab：仅在 enabled 时为真时显示 -->
+        <el-tab-pane 
+          label="标签上传" 
+          name="hotlabel" 
+          v-if="moduleConfigs.hotlabel && moduleConfigs.hotlabel.enabled">
           <el-form :model="SftpForm" label-position="top">
-            <template v-if="moduleConfigs.hotlabel === 'local'">
+            <template v-if="moduleConfigs.hotlabel.loginType === 'local'">
               <el-form-item label="本地账号" :label-width="SftpFormLabelWidth">
                 <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
               </el-form-item>
@@ -90,9 +94,13 @@
             </template>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="中国联通" name="chinaunicom">
+        <!-- 中国联通 Tab：仅在 enabled 时为真时显示 -->
+        <el-tab-pane 
+          label="中国联通" 
+          name="chinaunicom" 
+          v-if="moduleConfigs.chinaunicom && moduleConfigs.chinaunicom.enabled">
           <el-form :model="SftpForm" label-position="top">
-            <template v-if="moduleConfigs.chinaunicom === 'local'">
+            <template v-if="moduleConfigs.chinaunicom.loginType === 'local'">
               <el-form-item label="本地账号" :label-width="SftpFormLabelWidth">
                 <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
               </el-form-item>
@@ -271,10 +279,16 @@ export default {
         'X-SFTP-Token': ''
       },
       path: '', //指定登录sftp后的路径
-      // SFTP 模块配置（登录方式：local/ldap），默认 ldap 兼容未配置场景
+      // SFTP 模块配置 (登录方式 + 启用状态),默认 ldap 兼容未配置场景
       moduleConfigs: {
-        hotlabel: 'ldap',
-        chinaunicom: 'ldap'
+        hotlabel: {
+          loginType: 'ldap',
+          enabled: false  // 新增：默认不启用
+        },
+        chinaunicom: {
+          loginType: 'ldap',
+          enabled: false  // 新增：默认不启用
+        }
       },
       // 双控开关配置（仅中国联通生效）
       dualAuthEnabledMap: {
@@ -306,7 +320,10 @@ export default {
           const configMap = {}
           res.data.forEach(item => {
             if (item.moduleName === 'hotlabel' || item.moduleName === 'chinaunicom') {
-              configMap[item.moduleName] = item.loginType === 'local' ? 'local' : 'ldap'
+              configMap[item.moduleName] = {
+                loginType: item.loginType === 'local' ? 'local' : 'ldap',
+                enabled: !!item.enabled,  // 新增：解析 enabled 字段
+              }
               this.dualAuthEnabledMap[item.moduleName] = !!item.dualAuthEnabled
             }
           })
@@ -423,13 +440,13 @@ export default {
       this.path = ''
       if (this.activeName == 'hotlabel' || this.activeName == 'chinaunicom') {
         if (this.activeName == 'hotlabel') {
-          if (this.moduleConfigs.hotlabel === 'local') {
+          if (this.moduleConfigs.hotlabel?.loginType === 'local') {
             this.$refs.labelLocal ? this.$refs.labelLocal.focus() : this.$refs.username.focus()
           } else {
             this.$refs.label.focus()
           }
         } else {
-          if (this.moduleConfigs.chinaunicom === 'local') {
+          if (this.moduleConfigs.chinaunicom?.loginType === 'local') {
             this.$refs.unicomLabelLocal ? this.$refs.unicomLabelLocal.focus() : this.$refs.username.focus()
           } else {
             this.$refs.unicomLabel.focus()
@@ -461,13 +478,13 @@ export default {
     handleClick(tab) {
       this.$nextTick(() => {
         if (tab.name === 'hotlabel') {
-          if (this.moduleConfigs.hotlabel === 'local') {
+          if (this.moduleConfigs.hotlabel?.loginType === 'local') {
             this.$refs.labelLocal ? this.$refs.labelLocal.focus() : this.$refs.username.focus()
           } else {
             this.$refs.label.focus()
           }
         } else if (tab.name === 'chinaunicom') {
-          if (this.moduleConfigs.chinaunicom === 'local') {
+          if (this.moduleConfigs.chinaunicom?.loginType === 'local') {
             this.$refs.unicomLabelLocal ? this.$refs.unicomLabelLocal.focus() : this.$refs.username.focus()
           } else {
             this.$refs.unicomLabel.focus()

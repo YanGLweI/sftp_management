@@ -33,43 +33,21 @@
           <div class="charts" ref="charts"></div>
         </el-col>
         <el-col :span="6" class="right1">
-          <h3>SFTP{{ title }}排名</h3>
+          <h3>SFTP{{ title }}排行 Top10</h3>
           <ul>
-            <li>
-              <span class="rindex">1</span>
-              <span>mia</span>
-              <span class="rvalue">123,567</span>
+            <li v-for="(user, index) in userRankList" :key="index">
+              <span :class="index < 3 ? 'rindex' : 'rindex1'">{{ user.rank }}</span>
+              <span>{{ user.username }}</span>
+              <span class="rvalue">{{ user.count.toLocaleString() }}</span>
             </li>
-            <li>
-              <span class="rindex">2</span>
-              <span>datacenter</span>
-              <span class="rvalue">123,567</span>
-            </li>
-            <li>
-              <span class="rindex">3</span>
-              <span>liumin</span>
-              <span class="rvalue">123,567</span>
-            </li>
-            <li>
-              <span class="rindex1">4</span>
-              <span>ylw</span>
-              <span class="rvalue">123,567</span>
-            </li>
-            <li>
-              <span class="rindex1">5</span>
-              <span>wangpeng</span>
-              <span class="rvalue">123,567</span>
-            </li>
-            <li>
-              <span class="rindex1">6</span>
-              <span>longliuming</span>
-              <span class="rvalue">123,567</span>
-            </li>
-            <li>
-              <span class="rindex1">7</span>
-              <span>liliya</span>
-              <span class="rvalue">123,567</span>
-            </li>
+            <!-- 兼容处理：如果数据未加载完成或为空 -->
+            <template v-if="!userRankList || userRankList.length === 0">
+              <li v-for="i in 7" :key="i">
+                <span :class="i <= 3 ? 'rindex' : 'rindex1'">{{ i }}</span>
+                <span>暂无数据</span>
+                <span class="rvalue">0</span>
+              </li>
+            </template>
           </ul>
         </el-col>
       </el-row>
@@ -78,12 +56,14 @@
 </template>
 
 <script>
-// 引入Echarts
+// 引入 Echarts
 import echarts from "echarts";
-// 引入dayjs
+// 引入 dayjs
 import dayjs from "dayjs";
 
 import { mapState } from "vuex";
+import { reqActiveUsersTop10 } from '@/api/dashboard/dashboard.js'
+
 export default {
   name: "Sale",
   data() {
@@ -92,10 +72,11 @@ export default {
       barCharts: null,
       // 收集日历数据
       date: [],
+      userRankList: []  // 新增：用户排行榜数据
     };
   },
   mounted() {
-    // 初始化echarts实例
+    // 初始化 echarts 实例
     this.barCharts = echarts.init(this.$refs.charts);
     // 配置数据
     this.barCharts.setOption({
@@ -139,6 +120,28 @@ export default {
         },
       ],
     });
+    
+    // 加载用户排行榜
+    this.fetchUserRankList();
+    
+    // 防御性渲染：如果 store 已有数据（getData 早于本组件完成），立即绘制趋势图
+    // 避免 watch listState 因数据未发生"变化"而不触发，导致图表空白
+    this.$nextTick(() => {
+      if (this.listState && this.listState.transXaxis && this.listState.transXaxis.length > 0) {
+        this.barCharts.setOption({
+          xAxis: [
+            {
+              data: this.listState.transXaxis,
+            },
+          ],
+          series: [
+            {
+              data: this.listState.transFullDay,
+            },
+          ],
+        });
+      }
+    });
   },
   computed: {
     // 标题
@@ -151,10 +154,10 @@ export default {
   },
   // 监听
   watch: {
-    // 监听title变化。改变数据
+    // 监听 title 变化。改变数据
     title() {
       // 重新修改图表配置数据
-      // 图表的配置数据可以再次修改,新数值会替换旧数值
+      // 图表的配置数据可以再次修改，新数值会替换旧数值
       this.barCharts.setOption({
         title: {
           text: this.title + "趋势",
@@ -193,6 +196,24 @@ export default {
     },
   },
   methods: {
+    // 获取活跃用户列表
+    async fetchUserRankList() {
+      try {
+        const res = await reqActiveUsersTop10()
+        if (res.code === 200) {
+          this.userRankList = res.data.map((item, index) => ({
+            rank: index + 1,
+            username: item.username,
+            count: item.count
+          }))
+        }
+      } catch (error) {
+        console.error('加载用户排行榜失败:', error)
+        // 如果请求失败，保留空数组，不显示默认假数据
+        this.userRankList = []
+      }
+    },
+    
     // 今日
     setDay() {
       dayjs();

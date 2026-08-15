@@ -599,7 +599,6 @@ export default {
     
     // 初始化布局
     this.$nextTick(() => {
-      console.log('initLayout called in $nextTick')
       this.initLayout()
       // 监听窗口 resize
       window.addEventListener('resize', this.handleResize)
@@ -659,26 +658,21 @@ export default {
       const dialogWidth = window.innerWidth * 0.95
       const splitterWidth = 4  // 分隔线宽度
       
-      console.log('initLayout called, window.innerWidth:', window.innerWidth)
-      
       // 响应式：如果宽度小于 1000px，使用单列布局
       if (window.innerWidth < 1000) {
         this.leftWidth = dialogWidth
         this.rightWidth = 0
-        console.log('Single column layout, rightWidth=0')
       } else {
         // 分配比例：左侧 65%，右侧 35%
         const leftRatio = 0.55
         this.leftWidth = Math.floor(dialogWidth * leftRatio)
         this.rightWidth = dialogWidth - this.leftWidth - splitterWidth
-        console.log(`Two column layout: leftWidth=${this.leftWidth}, rightWidth=${this.rightWidth}`)
       }
       
       // 动态计算队列表格最大高度
       // split-view-layout 高度 = 90vh - 80px
       // 减去: el-card body padding(24px) + tabs header(44px) + 表格预留边距(30px)
       this.queueTableMaxHeight = Math.floor(window.innerHeight * 0.9 - 80 - 24 - 44 - 30)
-      console.log(`Queue table max height: ${this.queueTableMaxHeight}px`)
     },
 
     // 处理窗口 resize
@@ -695,11 +689,8 @@ export default {
           this.leftWidth = Math.floor(dialogWidth * leftRatio)
           this.rightWidth = dialogWidth - this.leftWidth - splitterWidth
         }
-        console.log(`handleResize: leftWidth=${this.leftWidth}, rightWidth=${this.rightWidth}`)
-        
         // 重新计算队列表格最大高度
         this.queueTableMaxHeight = Math.floor(window.innerHeight * 0.9 - 80 - 24 - 44 - 30)
-        console.log(`Queue table max height: ${this.queueTableMaxHeight}px`)
         
         // 重新布局队列表格（高度变化后需要刷新）
         const refMap = { queue: 'queueTable', failed: 'failedTable', success: 'successTable' }
@@ -714,7 +705,6 @@ export default {
       e.preventDefault()
       e.stopPropagation()
       
-      console.log('🖱️ Drag started at X:', e.clientX)
       this.isDragging = true
       
       const startX = e.clientX
@@ -726,7 +716,6 @@ export default {
       }
       
       const handleMouseUp = () => {
-        console.log('🏁 Drag ended')
         this.isDragging = false
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
@@ -738,7 +727,6 @@ export default {
     
     // 分隔线鼠标按下处理（新的独立方法）
     onSplitterMouseDown(e) {
-      console.log('🖱️ onSplitterMouseDown called')
       this.initDrag(e)
     },
     
@@ -763,7 +751,6 @@ export default {
         this.$set(this, 'leftWidth', newLeftWidth)
         this.$set(this, 'rightWidth', newRightWidth)
       }
-      console.log(`📐 Width: start=${startLeftWidth}, delta=${deltaX}, left=${this.leftWidth}, right=${this.rightWidth}`)
     },
 
     // 恢复右侧传输队列面板

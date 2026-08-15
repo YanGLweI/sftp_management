@@ -47,9 +47,10 @@ func UpdateModuleConfig(c *gin.Context) {
 	}
 
 	var req struct {
-		LoginType      string `json:"loginType" binding:"required"` // local or ldap
-		EnabledRoles   []uint `json:"enabledRoles"`                 // 允许登录的角色 ID 列表
+		LoginType     string `json:"loginType" binding:"required"` // local or ldap
+		EnabledRoles  []uint `json:"enabledRoles"`                 // 允许登录的角色 ID 列表
 		DualAuthEnabled bool  `json:"dualAuthEnabled"`              // 是否启用双控（仅中国联通）
+		Enabled         bool  `json:"enabled"`                      // 模块是否启用
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -84,6 +85,7 @@ func UpdateModuleConfig(c *gin.Context) {
 	if roleBytes, marshalErr := json.Marshal(req.EnabledRoles); marshalErr == nil {
 		config.EnabledRoles = string(roleBytes)
 	}
+	config.Enabled = req.Enabled  // 保存 enabled 状态
 
 	// 仅中国联通模块可以配置双控开关
 	if moduleName == models.ModuleNameChinaUnicom {
@@ -144,6 +146,7 @@ func GetPublicModuleConfigs(c *gin.Context) {
 			"moduleName":      cfg.ModuleName,
 			"loginType":       cfg.LoginType,
 			"dualAuthEnabled": cfg.DualAuthEnabled,
+			"enabled":         cfg.Enabled, // 新增：公开 enabled 字段
 		})
 	}
 

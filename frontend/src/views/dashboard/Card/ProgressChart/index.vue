@@ -3,10 +3,17 @@
 </template>
 
 <script>
-// 引入Echarts
+// 引入 Echarts
 import echarts from "echarts";
 export default {
   name:'ProgressChart',
+  // 接收外部传入的进度值（0-100），默认 0
+  props: {
+    value: {
+      type: Number,
+      default: 0
+    }
+  },
   mounted(){
     let barCharts = echarts.init(this.$refs.charts);
     barCharts.setOption({
@@ -26,7 +33,7 @@ export default {
         {
           // 柱状图
           type:'bar',
-          data:[78],
+          data:[this.value],
           color:'yellowgreen',
           barWidth: 10,
           // 背景颜色
@@ -52,6 +59,21 @@ export default {
         bottom: 0,
       }
     })
+  },
+  watch: {
+    // 数据变化时更新图表
+    value(newVal) {
+      if (this.$refs.charts) {
+        let barCharts = echarts.getInstanceByDom(this.$refs.charts)
+        if (barCharts) {
+          barCharts.setOption({
+            series: [{
+              data: [newVal]
+            }]
+          })
+        }
+      }
+    }
   }
 }
 </script>

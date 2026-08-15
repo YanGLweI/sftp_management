@@ -131,6 +131,35 @@
       </div>
     </div>
 
+    <!-- 设置区块：启用状态 -->
+    <div class="config-section">
+      <div class="config-section__head">
+        <h3 class="config-section__title">启用状态</h3>
+        <span class="config-section__hint">{{ moduleTitle }}在 SFTP 登录页可见时的开关</span>
+      </div>
+      <div class="enabled-row">
+        <div class="enabled-row__info">
+          <div class="enabled-row__title">启用{{ moduleTitle }}</div>
+          <div class="enabled-row__desc">
+            {{ currentConfig.enabled ? 'SFTP 登录页将显示该模块的登录 tab' : 'SFTP 登录页将隐藏该模块的登录 tab' }}
+          </div>
+        </div>
+        <el-switch
+          v-model="currentConfig.enabled"
+          active-color="#409EFF"
+          inactive-color="#C0C4CC"
+        ></el-switch>
+      </div>
+      <el-alert
+        v-if="!currentConfig.enabled"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="enabled-alert"
+        title="当前已禁用：SFTP 登录页将不显示此模块的 tab"
+      ></el-alert>
+    </div>
+
     <!-- 设置区块：双控开关（仅中国联通） -->
     <div class="config-section" v-if="showDualAuth">
       <div class="config-section__head">
@@ -205,7 +234,8 @@ export default {
       currentConfig: {
         loginType: 'ldap',
         enabledRolesArray: [],
-        dualAuthEnabled: false
+        dualAuthEnabled: false,
+        enabled: false  // 新增：默认不启用
       },
       roleList: [],
       loading: false,
@@ -237,7 +267,8 @@ export default {
             this.currentConfig = {
               loginType: config.loginType || 'ldap',
               enabledRolesArray: JSON.parse(config.enabledRoles || '[]'),
-              dualAuthEnabled: !!config.dualAuthEnabled
+              dualAuthEnabled: !!config.dualAuthEnabled,
+              enabled: config.enabled !== undefined ? !!config.enabled : false  // 新增：兼容旧数据默认 false
             }
             this.savedSnapshot = JSON.parse(JSON.stringify(this.currentConfig))
           }
@@ -293,7 +324,8 @@ export default {
         const data = {
           loginType: this.currentConfig.loginType,
           enabledRoles: this.currentConfig.enabledRolesArray,
-          dualAuthEnabled: this.currentConfig.dualAuthEnabled
+          dualAuthEnabled: this.currentConfig.dualAuthEnabled,
+          enabled: this.currentConfig.enabled  // 新增：传递 enabled 字段
         }
 
         const res = await sftpModulesApi.updateModuleConfig(this.moduleName, data)
@@ -537,6 +569,27 @@ export default {
   color: #98a6b8;
 }
 .dual-auth-alert {
+  margin-top: 14px;
+}
+
+/* ===== 启用状态 ===== */
+.enabled-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.enabled-row__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2d3d;
+}
+.enabled-row__desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #98a6b8;
+}
+.enabled-alert {
   margin-top: 14px;
 }
 
