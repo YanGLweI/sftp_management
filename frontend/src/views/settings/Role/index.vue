@@ -137,16 +137,35 @@
         </div>
       </div>
     </el-card>
-    <!-- 弹窗样式保持，但调整一些细节 -->
+    <!-- 弹窗样式 -->
     <el-dialog :title="dialogTitle" :visible.sync="dialogVisible" width="700px" @closed="resetDialog" class="role-dialog">
+          
+      <!-- 步骤条指示器 -->
+      <div class="step-indicator">
+        <el-steps :active="currentStep - 1" finish-status="success" align-center>
+          <el-step title="基本信息"></el-step>
+          <el-step title="菜单权限"></el-step>
+          <el-step title="LDAP 安全组"></el-step>
+        </el-steps>
+      </div>
+          
       <el-form ref="roleForm" :model="roleForm" :rules="roleRules" label-width="120px">
-        <el-form-item label="角色名称" prop="name">
-          <el-input v-model="roleForm.name" :disabled="isSuperAdmin" placeholder="请输入角色名称" />
-        </el-form-item>
-        <el-form-item label="角色描述" prop="description">
-          <el-input v-model="roleForm.description" :disabled="isSuperAdmin" type="textarea" :rows="3" placeholder="请输入角色描述" />
-        </el-form-item>
-        <el-form-item label="菜单权限">
+            
+        <!-- 第一步：基本信息 -->
+        <div v-if="currentStep === 1" class="step-content">
+          <el-form-item label="角色名称" prop="name">
+            <el-input v-model="roleForm.name" :disabled="isSuperAdmin" placeholder="请输入角色名称" />
+          </el-form-item>
+          <el-form-item label="角色描述" prop="description">
+            <el-input v-model="roleForm.description" :disabled="isSuperAdmin" type="textarea" :rows="3" placeholder="请输入角色描述" />
+          </el-form-item>
+        </div>
+            
+        <!-- 第二步：菜单权限 -->
+        <div v-if="currentStep === 2" class="step-content">
+          <div style="margin-bottom: 12px; color: #6a7b9c; font-size: 13px;">
+            请勾选该角色可访问的菜单项
+          </div>
           <el-tree
             ref="menuTree"
             :data="allMenus"
@@ -158,20 +177,33 @@
             @check="handleMenuCheck"
           />
           <span v-if="isSuperAdmin" style="color: #999; font-size: 12px;">超级管理员菜单权限不可修改</span>
-        </el-form-item>
-        <el-form-item label="LDAP安全组">
-          <el-button type="primary" size="mini" icon="el-icon-plus" @click="addLDAPGroup">添加安全组</el-button>
-          <div v-for="(group, index) in roleForm.ldapGroups" :key="index" style="margin-top: 8px; display: flex; gap: 8px;">
-            <el-input v-model="group.group_dn" placeholder="安全组DN，如 CN=IT部,OU=..." style="flex: 2;" />
+        </div>
+            
+        <!-- 第三步：LDAP 安全组 -->
+        <div v-if="currentStep === 3" class="step-content">
+          <div style="margin-bottom: 12px; color: #6a7b9c; font-size: 13px;">
+            请填写 LDAP 安全组 DN 和显示名称，用于登录时自动匹配角色
+          </div>
+          <el-button type="primary" size="mini" icon="el-icon-plus" @click="addLDAPGroup" style="margin-bottom: 12px;">
+            添加安全组
+          </el-button>
+          <div v-for="(group, index) in roleForm.ldapGroups" :key="index" class="ldap-group-row">
+            <el-input v-model="group.group_dn" placeholder="安全组 DN，如 CN=IT部，OU=..." style="flex: 2;" />
             <el-input v-model="group.group_name" placeholder="显示名称" style="flex: 1;" />
             <el-button type="danger" icon="el-icon-delete" size="mini" @click="removeLDAPGroup(index)" />
           </div>
-        </el-form-item>
+        </div>
+            
       </el-form>
+          
+      <!-- 底部按钮 -->
       <span slot="footer">
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">保存</el-button>
+        <el-button v-if="currentStep > 1" @click="previousStep">上一步</el-button>
+        <el-button v-if="currentStep < 3" type="primary" @click="nextStep">下一步</el-button>
+        <el-button v-else type="primary" :loading="submitLoading" @click="handleSubmit">保存</el-button>
       </span>
+          
     </el-dialog>
     </div>
 </template>
@@ -199,6 +231,7 @@ export default {
       submitLoading: false,
       isEdit: false,
       editId: null,
+      currentStep: 1, // 当前步骤：1=基本信息，2=菜单权限，3=LDAP 安全组
       isSuperAdmin: false, // 是否为超级管理员角色
       allMenus: [],
       roleForm: {
@@ -255,6 +288,7 @@ export default {
     showCreateDialog() {
       this.isEdit = false
       this.editId = null
+      this.currentStep = 1 // 重置到第一步
       this.dialogTitle = '新增角色'
       this.dialogVisible = true
     },
@@ -262,7 +296,8 @@ export default {
       this.isEdit = true
       this.editId = row.ID
       this.isSuperAdmin = row.name === '超级管理员'
-      this.dialogTitle = this.isSuperAdmin ? '超级管理员（仅可修改LDAP安全组）' : '编辑角色'
+      this.currentStep = 1 // 编辑也从第一步开始
+      this.dialogTitle = this.isSuperAdmin ? '超级管理员（仅可修改 LDAP 安全组）' : '编辑角色'
       try {
         const res = await getRoleDetail(row.ID)
         if (res.code === 200) {
@@ -275,15 +310,7 @@ export default {
             group_name: g.groupName
           }))
           this.$nextTick(() => {
-            if (this.$refs.menuTree) {
-              // 超级管理员：默认勾选所有菜单（不可修改）
-              if (this.isSuperAdmin) {
-                const allMenuKeys = this.collectAllMenuKeys(this.allMenus)
-                this.$refs.menuTree.setCheckedKeys(allMenuKeys)
-              } else {
-                this.$refs.menuTree.setCheckedKeys(this.roleForm.menus)
-              }
-            }
+            this.restoreMenuChecks()
           })
         }
       } catch (e) {
@@ -322,9 +349,61 @@ export default {
       this.roleForm.ldapGroups.splice(index, 1)
     },
     resetDialog() {
+      this.currentStep = 1 // 重置步骤
       this.roleForm = { name: '', description: '', menus: [], ldapGroups: [] }
       this.submitLoading = false
       this.isSuperAdmin = false
+    },
+    
+    // 步骤导航 - 下一步
+    nextStep() {
+      if (this.currentStep === 1) {
+        // 验证基本信息
+        this.$refs.roleForm.validate((valid) => {
+          if (valid) {
+            this.currentStep++
+            this.restoreMenuChecks()
+            this.scrollToTop()
+          }
+        })
+      } else if (this.currentStep === 2) {
+        this.currentStep++
+        this.scrollToTop()
+      }
+    },
+    
+    // 恢复菜单树的勾选状态（树使用 v-if 按步骤渲染，每次进入第二步需重新设置）
+    restoreMenuChecks() {
+      this.$nextTick(() => {
+        if (this.$refs.menuTree) {
+          if (this.isSuperAdmin) {
+            const allMenuKeys = this.collectAllMenuKeys(this.allMenus)
+            this.$refs.menuTree.setCheckedKeys(allMenuKeys)
+          } else {
+            this.$refs.menuTree.setCheckedKeys(this.roleForm.menus)
+          }
+        }
+      })
+    },
+    
+    // 步骤导航 - 上一步
+    previousStep() {
+      if (this.currentStep > 1) {
+        this.currentStep--
+        // 回到第二步时恢复菜单树勾选状态（树被 v-if 销毁重建，需重新设置）
+        if (this.currentStep === 2) {
+          this.restoreMenuChecks()
+        }
+        this.scrollToTop()
+      }
+    },
+    
+    // 滚动到内容顶部
+    scrollToTop() {
+      this.$nextTick(() => {
+        const body = this.$el.querySelector('.el-dialog__body')
+        if (body) body.scrollTop = 0
+      })
     },
     async handleSubmit() {
       this.$refs.roleForm.validate(async valid => {
@@ -525,7 +604,7 @@ export default {
 
 /* ===== 对话框样式 ===== */
 .role-dialog >>> .el-dialog__header {
-  padding: 20px 24px;
+  padding: 12px 24px;
   border-bottom: 1px solid #eef1f6;
   display: flex;
   align-items: center;
@@ -549,16 +628,6 @@ export default {
 .role-dialog >>> .el-form-item__label {
   font-weight: 600;
   color: #1f2d3d;
-}
-
-.role-dialog >>> .el-tree-node__content {
-  padding: 6px 0;
-  height: 32px;
-  border-radius: 6px;
-}
-
-.role-dialog >>> .el-tree-node__content:hover {
-  background-color: #f7f9fa;
 }
 
 .role-dialog >>> .el-input__inner {
@@ -590,5 +659,87 @@ export default {
   .role-config-card {
     max-width: 100%;
   }
+}
+
+/* ===== 步骤条指示器 ===== */
+.role-dialog >>> .step-indicator {
+  padding: 20px 24px;
+  border-bottom: 1px solid #eef1f6;
+  background: linear-gradient(135deg, #f0f6ff 0%, #f8fafc 100%);
+  margin-top: -20px;
+  margin-left: -24px;
+  margin-right: -24px;
+  margin-bottom: 10px;
+}
+
+.role-dialog >>> .el-step__head.is-process {
+  color: #409EFF;
+  font-weight: 600;
+}
+
+.role-dialog >>> .el-step__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ===== 内容区域高度（dialog 总高控制在 590px 内，不滚动） ===== */
+.role-dialog >>> .el-dialog__body {
+  padding: 16px 24px;
+}
+
+/* ===== 步骤内容容器：固定高度，三步共用，保证弹窗高度稳定 ===== */
+.step-content {
+  height: 450px;
+  overflow-y: auto; /* 极端情况兑底，正常三步内容均不触发 */
+}
+
+/* ===== LDAP 安全组输入优化 ===== */
+.ldap-group-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.ldap-group-row >>> .el-input__inner {
+  border-radius: 6px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.ldap-group-row >>> .el-button--mini {
+  height: 36px;
+  padding: 9px 15px;
+  flex-shrink: 0;
+}
+
+/* ===== 菜单权限树优化（树内部可滚动，不撑大弹窗） ===== */
+.role-dialog >>> .el-tree {
+  background: #fff;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid #e4e9f0;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.role-dialog >>> .el-tree-node__content {
+  height: 26px;
+  border-radius: 4px;
+}
+
+.role-dialog >>> .el-tree-node__content:hover {
+  background-color: #f0f6ff;
+}
+
+/* ===== 底部按钮固定 ===== */
+.role-dialog >>> .el-dialog__footer {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  z-index: 10;
 }
 </style>

@@ -73,7 +73,7 @@ export default {
       logList: [],
       // 分页器
       page: 1,
-      limit: 5,
+      limit: 10,
       total: 0,
       // 日期选择
       tempSearchObj: {

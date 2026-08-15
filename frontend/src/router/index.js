@@ -218,53 +218,6 @@ export const constantRoutes = [
 
 // ! 异步路由：不同的用户 (角色), 需要过滤筛选出的路由
 export const asyncRoutes = [
-  // ! 权限管理
-  /* {
-    name: 'Acl',
-    path: '/acl',
-    component: Layout,
-    redirect: '/acl/user/list',
-    meta: {
-      title: '权限管理',
-      icon: 'el-icon-lock'
-    },
-    children: [
-      {
-        name: 'User',
-        path: 'user/list',
-        component: () => import('@/views/acl/user/list'),
-        meta: {
-          title: '用户管理',
-        },
-      },
-      {
-        name: 'Role',
-        path: 'role/list',
-        component: () => import('@/views/acl/role/list'),
-        meta: {
-          title: '角色管理',
-        },
-      },
-      {
-        name: 'RoleAuth',
-        path: 'role/auth/:id',
-        component: () => import('@/views/acl/role/roleAuth'),
-        meta: {
-          activeMenu: '/acl/role/list',
-          title: '角色授权',
-        },
-        hidden: true,
-      },
-      {
-        name: 'Permission',
-        path: 'permission/list',
-        component: () => import('@/views/acl/permission/list'),
-        meta: {
-          title: '菜单管理',
-        },
-      },
-    ]
-  }, */
   // ! 商品管理
   /* {
     path: '/product',

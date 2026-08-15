@@ -339,7 +339,7 @@ export default {
       multipleSelection:[], //多项的用户信息
       // 分页器
       page:1,
-      limit:5,
+      limit:10,
       total:0,
       // 验证规则
       rules:{
