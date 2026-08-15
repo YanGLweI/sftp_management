@@ -1,6 +1,7 @@
 package models
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"database/sql/driver"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"gorm.io/gorm"
 	"sftpbackend/dao"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -103,6 +105,60 @@ func loadCACertFromBase64(base64Cert string) ([]byte, error) {
 	}
 
 	return certBytes, nil
+}
+
+// certPoolCache 证书解析缓存：key 为证书内容哈希，避免重复解析大证书
+// 缓存条目带过期时间（1小时），防止内存无限增长
+var (
+	certPoolCache   = make(map[string]*cachedCertPool)
+	certPoolCacheMu sync.RWMutex
+	certCacheTTL    = time.Hour
+)
+
+// cachedCertPool 带过期时间的缓存条目
+type cachedCertPool struct {
+	pool      *x509.CertPool
+	expiresAt time.Time
+}
+
+// ParseCACertPoolCached 解析证书并缓存（供连接测试等高频场景使用）
+func ParseCACertPoolCached(certBase64 string) (*x509.CertPool, error) {
+	// 计算内容哈希作为缓存键
+	hash := fmt.Sprintf("%x", certBytesHash(certBase64))
+
+	certPoolCacheMu.RLock()
+	if entry, ok := certPoolCache[hash]; ok && time.Now().Before(entry.expiresAt) {
+		certPoolCacheMu.RUnlock()
+		return entry.pool, nil
+	}
+	certPoolCacheMu.RUnlock()
+
+	// 缓存未命中：解析
+	pool, err := ParseCACertPool(certBase64)
+	if err != nil {
+		return nil, err
+	}
+
+	// 写入缓存（同时清理过期条目）
+	certPoolCacheMu.Lock()
+	now := time.Now()
+	for k, v := range certPoolCache {
+		if now.After(v.expiresAt) {
+			delete(certPoolCache, k)
+		}
+	}
+	certPoolCache[hash] = &cachedCertPool{pool: pool, expiresAt: now.Add(certCacheTTL)}
+	certPoolCacheMu.Unlock()
+
+	return pool, nil
+}
+
+// certBytesHash 计算证书内容的简单哈希（SHA-256 前 16 字节）
+func certBytesHash(certBase64 string) [16]byte {
+	h := sha256.Sum256([]byte(certBase64))
+	var out [16]byte
+	copy(out[:], h[:16])
+	return out
 }
 
 // ParseCACertPool 解析 Base64 编码的 CA 证书，兼容 PEM 与 DER 两种格式

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
 	"github.com/go-ldap/ldap/v3"
+	"github.com/sirupsen/logrus"
 )
 
 // LDAPConfigController LDAP 配置管理控制器
@@ -105,8 +105,18 @@ func (ctrl *LDAPConfigController) SaveLDAPConfig(c *gin.Context) {
 		}
 	} else {
 		// 密码留空表示不修改，保留数据库中已有的加密密码
-		if existing, e := models.GetLDAPConfig(); e == nil {
-			encryptedPassword = existing.Password
+		existingConfig, e := models.GetLDAPConfig()
+		if e == nil && existingConfig.ID > 0 {
+			encryptedPassword = existingConfig.Password
+			logrus.Printf("LDAP 配置：密码未修改，保留原有值 (ID=%d)", existingConfig.ID)
+		} else {
+			// 严重错误：无法获取现有配置，拒绝保存
+			logrus.Errorf("LDAP 配置：无法获取现有密码 (e=%v)，拒绝保存", e)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "无法验证现有配置，请重试",
+			})
+			return
 		}
 	}
 
@@ -221,8 +231,8 @@ func testLDAPConnectionInternal(server, baseDN string, useTLS, insecure bool, us
 			return fmt.Errorf("使用 TLS 时需要上传 CA 证书")
 		}
 
-		// 解析证书（兼容 PEM/DER 格式）
-		certPool, err := models.ParseCACertPool(certBase64)
+		// 解析证书（兼容 PEM/DER 格式），使用缓存避免重复解析
+		certPool, err := models.ParseCACertPoolCached(certBase64)
 		if err != nil {
 			return err
 		}

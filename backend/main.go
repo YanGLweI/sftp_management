@@ -48,6 +48,13 @@ func main() {
 		logrus.Fatal("数据库表迁移失败:", err)
 	}
 
+	// 补充迁移：确保 LDAP 配置表 cert_filename 字段有索引（旧版本升级场景）
+	if err := dao.DB.Exec("CREATE INDEX IF NOT EXISTS idx_ldap_config_cert_filename ON t_ldap_config(cert_filename)").Error; err != nil {
+		logrus.Warnf("创建 LDAP 配置表索引失败（可忽略，仅性能优化）: %v", err)
+	} else {
+		logrus.Println("LDAP 配置表索引检查完成")
+	}
+
 	// 初始化数据（调度器、密码策略、超级管理员角色、默认admin账号、系统安全标准）
 	common.InitData()
 

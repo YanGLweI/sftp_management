@@ -417,6 +417,10 @@ func DualVerify(c *gin.Context) {
 		})
 		return
 	}
+	
+	// 日志记录：签发双控凭证
+	log.Printf("双控凭证签发：%s -> %s (IP: %s, TTL: 60s)", req.Username, dualToken[:8]+"...", clientIP)
+	
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "双控验证通过",

@@ -2,7 +2,9 @@ package models
 
 import (
 	"sftpbackend/dao"
+	"strings"
 
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -61,37 +63,32 @@ func CreateSFTPModuleConfig(config *SFTPModuleConfig) error {
 	return result.Error
 }
 
-// InitDefaultConfigs 初始化默认配置
+// InitDefaultConfigs 初始化默认配置（支持并发）
 func InitDefaultConfigs() error {
-	hotlabelConfig := &SFTPModuleConfig{
-		ModuleName:      ModuleNameHotLabel,
-		LoginType:       LoginTypeLDAP,
-		EnabledRoles:    "[]", // 初始为空，待管理员配置
-		DualAuthEnabled: false,
+	configs := []SFTPModuleConfig{
+		{ModuleName: ModuleNameHotLabel, LoginType: LoginTypeLDAP, EnabledRoles: "[]", DualAuthEnabled: false},
+		{ModuleName: ModuleNameChinaUnicom, LoginType: LoginTypeLDAP, EnabledRoles: "[]", DualAuthEnabled: true},
 	}
 	
-	chinaUnicomConfig := &SFTPModuleConfig{
-		ModuleName:      ModuleNameChinaUnicom,
-		LoginType:       LoginTypeLDAP,
-		EnabledRoles:    "[]",
-		DualAuthEnabled: true,
-	}
-
-	// 检查是否已存在配置
-	existingHotLabel, _ := GetSFTPModuleConfig(ModuleNameHotLabel)
-	if existingHotLabel == nil {
-		// 使用 Select 强制写入 DualAuthEnabled=false（避免 GORM 对 bool 零值使用数据库默认值）
-		if err := dao.DB.Select("ModuleName", "LoginType", "EnabledRoles", "DualAuthEnabled").Create(hotlabelConfig).Error; err != nil {
+	for i := range configs {
+		var existing SFTPModuleConfig
+		err := dao.DB.Where("module_name = ?", configs[i].ModuleName).First(&existing).Error
+		if err == gorm.ErrRecordNotFound {
+			// 尝试创建
+			if err := dao.DB.Create(&configs[i]).Error; err != nil {
+				// 捕获唯一索引冲突（多进程同时创建）
+				if strings.Contains(err.Error(), "Duplicate entry") || strings.Contains(err.Error(), "Duplicate key") {
+					logrus.Warnf("模块 %s 已被其他实例创建 (忽略)", configs[i].ModuleName)
+					continue
+				}
+				return err
+			}
+			logrus.Printf("初始化模块配置成功：%s", configs[i].ModuleName)
+		} else if err != nil {
 			return err
+		} else {
+			logrus.Printf("模块配置已存在：%s (ID=%d)", existing.ModuleName, existing.ID)
 		}
 	}
-
-	existingChinaUnicom, _ := GetSFTPModuleConfig(ModuleNameChinaUnicom)
-	if existingChinaUnicom == nil {
-		if err := CreateSFTPModuleConfig(chinaUnicomConfig); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }

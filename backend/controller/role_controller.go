@@ -173,51 +173,79 @@ func UpdateRole(c *gin.Context) {
 
 	// 超级管理员角色：禁止修改名称、描述、菜单权限，仅允许更新LDAP安全组
 	if role.Name == superAdminRoleName {
-		// 仅重建LDAP安全组关联
-		dao.DB.Where("role_id = ?", role.ID).Delete(&models.RoleLDAPGroup{})
-		for _, group := range req.LDAPGroups {
-			dn, _ := group["group_dn"].(string)
-			name, _ := group["group_name"].(string)
-			if dn != "" {
-				dao.DB.Create(&models.RoleLDAPGroup{
-					RoleID:    role.ID,
-					GroupDN:   dn,
-					GroupName: name,
-				})
+		// 仅重建LDAP安全组关联（事务保证原子性）
+		err := dao.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("role_id = ?", role.ID).Delete(&models.RoleLDAPGroup{}).Error; err != nil {
+				return err
 			}
+			for _, group := range req.LDAPGroups {
+				dn, _ := group["group_dn"].(string)
+				name, _ := group["group_name"].(string)
+				if dn != "" {
+					if err := tx.Create(&models.RoleLDAPGroup{
+						RoleID:    role.ID,
+						GroupDN:   dn,
+						GroupName: name,
+					}).Error; err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"code": 500, "message": "更新LDAP安全组失败: " + err.Error()})
+			return
 		}
 		c.JSON(http.StatusOK, gin.H{"code": 200, "message": "更新角色成功"})
 		return
 	}
 
-	// 更新基本信息
-	dao.DB.Model(role).Updates(map[string]interface{}{
-		"name":        req.Name,
-		"description": req.Description,
-	})
-
-	// 重建菜单关联
-	dao.DB.Where("role_id = ?", role.ID).Delete(&models.RoleMenu{})
-	for _, menuName := range req.Menus {
-		dao.DB.Create(&models.RoleMenu{
-			RoleID:    role.ID,
-			RouteName: menuName,
-			MenuTitle: menuName,
-		})
-	}
-
-	// 重建LDAP安全组关联
-	dao.DB.Where("role_id = ?", role.ID).Delete(&models.RoleLDAPGroup{})
-	for _, group := range req.LDAPGroups {
-		dn, _ := group["group_dn"].(string)
-		name, _ := group["group_name"].(string)
-		if dn != "" {
-			dao.DB.Create(&models.RoleLDAPGroup{
-				RoleID:    role.ID,
-				GroupDN:   dn,
-				GroupName: name,
-			})
+	// 更新基本信息 + 重建菜单/安全组关联（事务保证原子性，避免中途失败导致数据丢失）
+	err = dao.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(role).Updates(map[string]interface{}{
+			"name":        req.Name,
+			"description": req.Description,
+		}).Error; err != nil {
+			return err
 		}
+
+		// 重建菜单关联
+		if err := tx.Where("role_id = ?", role.ID).Delete(&models.RoleMenu{}).Error; err != nil {
+			return err
+		}
+		for _, menuName := range req.Menus {
+			if err := tx.Create(&models.RoleMenu{
+				RoleID:    role.ID,
+				RouteName: menuName,
+				MenuTitle: menuName,
+			}).Error; err != nil {
+				return err
+			}
+		}
+
+		// 重建LDAP安全组关联
+		if err := tx.Where("role_id = ?", role.ID).Delete(&models.RoleLDAPGroup{}).Error; err != nil {
+			return err
+		}
+		for _, group := range req.LDAPGroups {
+			dn, _ := group["group_dn"].(string)
+			name, _ := group["group_name"].(string)
+			if dn != "" {
+				if err := tx.Create(&models.RoleLDAPGroup{
+					RoleID:    role.ID,
+					GroupDN:   dn,
+					GroupName: name,
+				}).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 500, "message": "更新角色失败: " + err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"code": 200, "message": "更新角色成功"})
@@ -246,7 +274,20 @@ func DeleteRole(c *gin.Context) {
 		return
 	}
 
-	if err := dao.DB.Delete(&models.Role{}, id).Error; err != nil {
+	// 事务内删除角色及其关联数据（菜单、LDAP安全组），避免孤儿数据
+	err = dao.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("role_id = ?", id).Delete(&models.RoleMenu{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("role_id = ?", id).Delete(&models.RoleLDAPGroup{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&models.Role{}, id).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"code": 500, "message": "删除角色失败"})
 		return
 	}

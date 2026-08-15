@@ -40,6 +40,29 @@ func UpdatePasswordPolicy(c *gin.Context) {
 		return
 	}
 
+	// 参数边界校验，防止无效配置导致安全问题
+	if req.MinLength < 8 || req.MinLength > 128 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "密码最小长度应在 8-128 位之间"})
+		return
+	}
+	if req.ExpiryDays < 0 || req.ExpiryDays > 3650 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "密码过期天数应在 0-3650 天之间（0 表示永不过期）"})
+		return
+	}
+	if req.PasswordHistory < 0 || req.PasswordHistory > 50 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "密码历史记录数应在 0-50 条之间（0 表示不限制）"})
+		return
+	}
+	if req.MaxLoginAttempts < 1 || req.MaxLoginAttempts > 20 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "最大登录失败次数应在 1-20 次之间"})
+		return
+	}
+	// 复杂度规则全关闭时拒绝（防止出现无约束的弱密码策略）
+	if !req.RequireUppercase && !req.RequireLowercase && !req.RequireDigit && !req.RequireSpecialChar {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "至少需要启用一种复杂度要求"})
+		return
+	}
+
 	policy, err := models.GetPasswordPolicy()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"code": 500, "message": "获取密码策略失败"})

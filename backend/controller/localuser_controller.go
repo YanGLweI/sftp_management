@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"sftpbackend/dao"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // GetLocalUserList 获取本地账号列表
@@ -83,9 +85,12 @@ func CreateLocalUser(c *gin.Context) {
 		return
 	}
 
-	// 检查用户名是否已存在
+	// 检查用户名是否已存在（区分"不存在"与"查询失败"，避免数据库故障被误报为用户名已存在）
 	if _, err := models.GetLocalUserByUsername(req.Username); err == nil {
 		c.JSON(http.StatusOK, gin.H{"code": 400, "message": "用户名已存在"})
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusOK, gin.H{"code": 500, "message": "查询用户名失败: " + err.Error()})
 		return
 	}
 
