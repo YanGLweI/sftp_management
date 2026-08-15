@@ -3,7 +3,7 @@
     <el-card>
       <div slot="header" class="header">
         <div class="search-header">
-          <span>活跃用户 Top10</span>
+          <span>活跃用户 Top6</span>
         </div>
       </div>
       <div>
@@ -27,7 +27,7 @@
 </template>
 
 <script>
-import { reqActiveUsersTop10 } from '@/api/dashboard/dashboard.js'
+import { reqActiveUsersTop6 } from '@/api/dashboard/dashboard.js'
 
 export default {
   name: "Search",
@@ -42,7 +42,7 @@ export default {
   methods: {
     async fetchActiveUsers() {
       try {
-        const res = await reqActiveUsersTop10()
+        const res = await reqActiveUsersTop6()
         if (res.code === 200) {
           this.activeUsers = res.data.map(item => ({
             username: item.username,

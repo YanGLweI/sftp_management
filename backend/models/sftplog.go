@@ -202,15 +202,28 @@ type ActiveUserStat struct {
 	Count    int64  `json:"count"`
 }
 
-// GetActiveUsersTop10 获取活跃用户 Top10（按传输操作次数排序）
-func GetActiveUsersTop10() ([]ActiveUserStat, error) {
+// GetActiveUsersTop6 获取活跃用户 Top6（按登录次数排序）
+func GetActiveUsersTop6() ([]ActiveUserStat, error) {
+	var stats []ActiveUserStat
+	err := dao.DB.Model(&SftpLog{}).
+		Select("username, COUNT(*) as count").
+		Where("action = ?", "Login").
+		Group("username").
+		Order("COUNT(*) DESC").
+		Limit(6).
+		Scan(&stats).Error
+	return stats, err
+}
+
+// GetTopTransferUsers 获取传输量排行 Top6（按 Upload + Download 次数排序）
+func GetTopTransferUsers() ([]ActiveUserStat, error) {
 	var stats []ActiveUserStat
 	err := dao.DB.Model(&SftpLog{}).
 		Select("username, COUNT(*) as count").
 		Where("action IN ?", []string{"Upload", "Download"}).
 		Group("username").
 		Order("COUNT(*) DESC").
-		Limit(10).
+		Limit(6).
 		Scan(&stats).Error
 	return stats, err
 }

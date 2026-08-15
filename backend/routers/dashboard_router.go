@@ -23,7 +23,8 @@ func registerDashboardRouter(r *gin.Engine) {
 		dashboardGroup.GET("/transfer/today", controller.GetTodayTransferCount)
 		dashboardGroup.GET("/transfer/growth", controller.GetTransferGrowth)
 		dashboardGroup.GET("/auth/distribution", controller.GetAuthDistribution)
-		dashboardGroup.GET("/users/active-top10", controller.GetActiveUsersTop10)
+		dashboardGroup.GET("/users/active-top6", controller.GetActiveUsersTop6)   // 登录数排行（活跃用户）
+		dashboardGroup.GET("/users/top-transfers", controller.GetTopTransferUsers)  // 传输量排行（SFTP传输量排行）
 
 	}
 }

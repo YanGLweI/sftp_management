@@ -251,9 +251,9 @@ func GetAuthDistribution(c *gin.Context) {
 	})
 }
 
-// GetActiveUsersTop10 获取活跃用户 Top10
-func GetActiveUsersTop10(c *gin.Context) {
-	users, err := models.GetActiveUsersTop10()
+// GetActiveUsersTop6 获取活跃用户 Top6
+func GetActiveUsersTop6(c *gin.Context) {
+	users, err := models.GetActiveUsersTop6()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
@@ -266,5 +266,23 @@ func GetActiveUsersTop10(c *gin.Context) {
 		"code":    200,
 		"data":    users,
 		"message": "获取活跃用户成功",
+	})
+}
+
+// GetTopTransferUsers 获取传输量排行 Top10
+func GetTopTransferUsers(c *gin.Context) {
+	users, err := models.GetTopTransferUsers()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"data":    nil,
+			"message": err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"data":    users,
+		"message": "获取传输量排行成功",
 	})
 }

@@ -33,7 +33,7 @@
           <div class="charts" ref="charts"></div>
         </el-col>
         <el-col :span="6" class="right1">
-          <h3>SFTP{{ title }}排行 Top10</h3>
+          <h3>SFTP{{ title }}排行 Top6</h3>
           <ul>
             <li v-for="(user, index) in userRankList" :key="index">
               <span :class="index < 3 ? 'rindex' : 'rindex1'">{{ user.rank }}</span>
@@ -62,7 +62,7 @@ import echarts from "echarts";
 import dayjs from "dayjs";
 
 import { mapState } from "vuex";
-import { reqActiveUsersTop10 } from '@/api/dashboard/dashboard.js'
+import { reqTopTransferUsers } from '@/api/dashboard/dashboard.js'
 
 export default {
   name: "Sale",
@@ -196,10 +196,10 @@ export default {
     },
   },
   methods: {
-    // 获取活跃用户列表
+    // 获取传输量排行列表
     async fetchUserRankList() {
       try {
-        const res = await reqActiveUsersTop10()
+        const res = await reqTopTransferUsers()
         if (res.code === 200) {
           this.userRankList = res.data.map((item, index) => ({
             rank: index + 1,
