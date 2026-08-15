@@ -363,14 +363,48 @@ func DualVerify(c *gin.Context) {
 		return
 	}
 
-	// 6. LDAP 验证双控账号（须属于产业部安全组）
-	_, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(req.Username, decryptedPassword, "")
-	if ldapErr != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"code":    statusCode,
-			"message": "双控验证失败: " + ldapErr.Error(),
-		})
-		return
+	// 6. 根据模块配置选择双控账号验证方式（与模块登录方式保持一致）
+	// 模块配置为本地登录时用本地账号验证，否则（默认 LDAP）用域控账号验证
+	moduleConfig, cfgErr := models.GetSFTPModuleConfig(conn.LoginType)
+	loginType := models.LoginTypeLDAP // 配置不存在时默认 LDAP（向后兼容）
+	if cfgErr == nil && moduleConfig != nil {
+		loginType = moduleConfig.LoginType
+	}
+
+	if loginType == models.LoginTypeLocal {
+		// 本地账号验证（启用状态、bcrypt 密码、失败锁定、密码过期检查）
+		localUser, expired, localErr := models.AuthenticateLocal(req.Username, decryptedPassword)
+		if localErr != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"code":    400,
+				"message": "双控验证失败: " + localErr.Error(),
+			})
+			return
+		}
+		if expired {
+			c.JSON(http.StatusOK, gin.H{
+				"code":    400,
+				"message": "双控验证失败: 该账号密码已过期",
+			})
+			return
+		}
+		if localUser.MustChangePassword {
+			c.JSON(http.StatusOK, gin.H{
+				"code":    400,
+				"message": "双控验证失败: 该账号需先修改密码",
+			})
+			return
+		}
+	} else {
+		// LDAP 验证双控账号（须属于产业部安全组）
+		_, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(req.Username, decryptedPassword, "")
+		if ldapErr != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"code":    statusCode,
+				"message": "双控验证失败: " + ldapErr.Error(),
+			})
+			return
+		}
 	}
 
 	// 7. 签发双控凭证（60 秒有效，可复用），记录复核人

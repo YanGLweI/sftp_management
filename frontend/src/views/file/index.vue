@@ -149,8 +149,8 @@
       :username="SftpForm.username"
       :visible="SftpBrowserVisible"
       :upload-headers="uploadHeaders"
-      :dual-verify-enabled="dualAuthEnabledMap.chinaunicom"
-      :login-domain-user="moduleConfigs.chinaunicom === 'local' ? '' : SftpForm.username"
+      :dual-verify-enabled="dualAuthEnabledMap[currentLoginType] || false"
+      :login-domain-user="moduleConfigs[currentLoginType] === 'local' ? '' : SftpForm.username"
       upload-url="/dev-api/sftp/upload"
       @close="closeSftpBrowser"
     />
@@ -263,6 +263,7 @@ export default {
       },
       SftpBrowserVisible: false,
       activeName: 'password',
+      currentLoginType: 'password', // 当前登录的模块类型（password/hotlabel/chinaunicom），用于决定双控开关
       keyFileList: [],
       KeyFileUploadUrl: '/dev-api/sftp/login',
       uploadHeaders: {
@@ -331,6 +332,7 @@ export default {
         try {
           const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword })
           if (res.code == 200) {
+            this.currentLoginType = this.activeName
             sessionStorage.setItem("sftp_token", res.data.sftp_token)
             this.uploadHeaders['X-SFTP-Token'] = res.data.sftp_token
             this.$message.success('SFTP登录成功')
@@ -357,6 +359,7 @@ export default {
               this.changePasswordDialogVisible = true
               return
             }
+            this.currentLoginType = this.activeName
             sessionStorage.setItem("sftp_token", res.data.sftp_token)
             this.uploadHeaders['X-SFTP-Token'] = res.data.sftp_token
             this.path = this.activeName == 'hotlabel' ? '/hotlabel' : '/ChinaUnicom'
@@ -383,6 +386,7 @@ export default {
     },
     KeyhandleUploadSuccess(res) {
       if (res.code === 200) {
+        this.currentLoginType = this.activeName
         sessionStorage.setItem("sftp_token", res.data.sftp_token);
         this.uploadHeaders['X-SFTP-Token'] = res.data.sftp_token
         this.$message.success('SFTP登录成功');
