@@ -70,7 +70,7 @@ func main() {
 	go utils.SFTPConnManager.CleanExpiredConns(8 * time.Hour)
 
 	// 启动双控凭证过期清理
-	go utils.DualAuthManager.CleanExpiredTokens()
+	go utils.DualAuthManager.CleanupExpiredTokens()
 
 	// 设置路由
 	r := routers.SetupRouter()

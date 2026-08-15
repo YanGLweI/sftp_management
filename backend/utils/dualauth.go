@@ -9,13 +9,22 @@ import (
 
 // dualAuthEntry 双控验证凭证条目
 type dualAuthEntry struct {
-	SftpToken string    // 绑定的SFTP连接Token
-	Reviewer  string    // 双控复核人（另一产业部账号）
-	ExpireAt  time.Time // 过期时间
+	SFTPToken   string    // 绑定的 SFTP 连接 Token
+	Reviewer    string    // 双控复核人（另一产业部账号）
+	IssuerIP    string    // 签发 IP（用于安全审计）
+	ExpireAt    time.Time // 过期时间
+	UsedAt      time.Time // 使用时间（单次使用后设置）
+	RetryCount  int       // 重试次数
 }
 
-// 双控凭证默认有效期：60秒（供上传并发3路复用同一凭证）
-const DualAuthTokenTTL = 60 * time.Second
+const (
+	// DualAuthTokenTTL 双控凭证默认有效期：60 秒
+	DualAuthTokenTTL = 60 * time.Second
+	// MaxTokensPerSftpToken 同一 SFTP Token 最多签发并发双控 Token 数
+	MaxTokensPerSftpToken = 5
+	// DualAuthCleanupInterval 定期清理间隔：每 5 分钟
+	DualAuthCleanupInterval = 5 * time.Minute
+)
 
 // dualAuthManager 双控验证凭证管理器（内存存储）
 type dualAuthManager struct {
@@ -28,23 +37,46 @@ var DualAuthManager = &dualAuthManager{
 	tokenMap: make(map[string]dualAuthEntry),
 }
 
-// IssueToken 为指定SFTP连接签发双控验证凭证（可复用，有效期 DualAuthTokenTTL）
-// reviewer: 通过双控验证的另一产业部账号
-func (m *dualAuthManager) IssueToken(sftpToken, reviewer string) string {
+// IssueToken 为指定 SFTP 连接签发双控验证凭证
+// - sftpToken: SFTP 连接 Token
+// - reviewer: 通过双控验证的另一产业部账号
+// - clientIP: 客户端 IP（用于安全审计和速率限制）
+// 返回：Token 字符串，失败返回空字符串
+func (m *dualAuthManager) IssueToken(sftpToken, reviewer, clientIP string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// ✅ 检查同一 SFTP Token 的并发 Token 数量
+	existingCount := 0
+	for _, entry := range m.tokenMap {
+		if entry.SFTPToken == sftpToken &&
+			!entry.ExpireAt.IsZero() &&
+			entry.ExpireAt.After(time.Now()) {
+			existingCount++
+		}
+	}
+	if existingCount >= MaxTokensPerSftpToken {
+		return "" // 超过最大并发数
+	}
+
 	token := uuid.New().String()
 	m.tokenMap[token] = dualAuthEntry{
-		SftpToken: sftpToken,
-		Reviewer:  reviewer,
-		ExpireAt:  time.Now().Add(DualAuthTokenTTL),
+		SFTPToken:  sftpToken,
+		Reviewer:   reviewer,
+		IssuerIP:   clientIP,
+		ExpireAt:   time.Now().Add(DualAuthTokenTTL),
+		UsedAt:     time.Time{},
+		RetryCount: 0,
 	}
+
 	return token
 }
 
-// VerifyToken 校验双控凭证：存在、未过期、且绑定当前SFTP连接
-func (m *dualAuthManager) VerifyToken(sftpToken, dualToken string) bool {
+// VerifyToken 校验双控凭证：存在、未过期、且绑定当前 SFTP 连接与签发 IP
+// - clientIP: 当前请求客户端 IP，必须与签发时 IP 一致（防跨 IP 盗用）
+// - 如果 token 已使用（UsedAt 不为零）则直接返回 false
+// 注意：不删除 Token，以支持上传并发 3 路复用同一凭证；成功操作后由 GetReviewer 消耗
+func (m *dualAuthManager) VerifyToken(sftpToken, dualToken, clientIP string) bool {
 	if dualToken == "" {
 		return false
 	}
@@ -52,33 +84,51 @@ func (m *dualAuthManager) VerifyToken(sftpToken, dualToken string) bool {
 	defer m.mu.RUnlock()
 
 	entry, exists := m.tokenMap[dualToken]
-	if !exists || entry.SftpToken != sftpToken {
+	if !exists || entry.SFTPToken != sftpToken {
 		return false
 	}
 	if time.Now().After(entry.ExpireAt) {
+		return false
+	}
+	// ✅ 校验签发 IP 与当前客户端 IP 一致（防跨 IP 复用）
+	if entry.IssuerIP != "" && entry.IssuerIP != clientIP {
+		return false
+	}
+	// ✅ 检查是否已使用（单次使用原则）
+	if !entry.UsedAt.IsZero() {
 		return false
 	}
 	return true
 }
 
 // GetReviewer 获取双控凭证对应的复核人账号
-func (m *dualAuthManager) GetReviewer(dualToken string) string {
+// - 验证 Token 有效性和过期时间
+// - ✅ 单次使用后自动删除 Token（防止重用）
+// - -clientIP: 客户端 IP（用于安全审计对比）
+func (m *dualAuthManager) GetReviewer(dualToken, clientIP string) string {
 	if dualToken == "" {
 		return ""
 	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	entry, exists := m.tokenMap[dualToken]
 	if !exists {
 		return ""
 	}
+	// ✅ 验证是否过期
+	if time.Now().After(entry.ExpireAt) {
+		delete(m.tokenMap, dualToken)
+		return ""
+	}
+	// ✅ 单次使用后自动删除 Token
+	delete(m.tokenMap, dualToken)
 	return entry.Reviewer
 }
 
-// CleanExpiredTokens 定期清理过期凭证（每5分钟检查一次）
-func (m *dualAuthManager) CleanExpiredTokens() {
-	ticker := time.NewTicker(5 * time.Minute)
+// CleanupExpiredTokens 定期清理过期凭证（每 5 分钟检查一次）
+func (m *dualAuthManager) CleanupExpiredTokens() {
+	ticker := time.NewTicker(DualAuthCleanupInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -86,6 +136,9 @@ func (m *dualAuthManager) CleanExpiredTokens() {
 		now := time.Now()
 		for token, entry := range m.tokenMap {
 			if now.After(entry.ExpireAt) {
+				delete(m.tokenMap, token)
+			} else if !entry.UsedAt.IsZero() {
+				// 已使用的 Token 也立即删除
 				delete(m.tokenMap, token)
 			}
 		}

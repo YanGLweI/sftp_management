@@ -54,9 +54,9 @@ func DualAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 4. 校验双控凭证（X-Dual-Token，60秒有效，绑定当前连接）
+		// 4. 校验双控凭证（X-Dual-Token，60 秒有效，绑定当前连接与签发 IP）
 		dualToken := c.GetHeader("X-Dual-Token")
-		if !utils.DualAuthManager.VerifyToken(token, dualToken) {
+		if !utils.DualAuthManager.VerifyToken(token, dualToken, c.ClientIP()) {
 			c.JSON(http.StatusOK, gin.H{
 				"code":    428,
 				"message": "需要双控验证",

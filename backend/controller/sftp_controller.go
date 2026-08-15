@@ -271,7 +271,9 @@ func sftpLogUsername(conn *utils.SFTPConnection) string {
 
 // 从请求中获取双控复核人账号
 func getReviewer(c *gin.Context) string {
-	return utils.DualAuthManager.GetReviewer(c.GetHeader("X-Dual-Token"))
+	dualToken := c.GetHeader("X-Dual-Token")
+	clientIP := c.ClientIP()
+	return utils.DualAuthManager.GetReviewer(dualToken, clientIP)
 }
 
 // 记录SFTP登录与操作日志（独立逻辑，不影响主流程）
@@ -371,8 +373,16 @@ func DualVerify(c *gin.Context) {
 		return
 	}
 
-	// 7. 签发双控凭证（60秒有效，可复用），记录复核人
-	dualToken := utils.DualAuthManager.IssueToken(token, req.Username)
+	// 7. 签发双控凭证（60 秒有效，可复用），记录复核人
+	clientIP := c.ClientIP()
+	dualToken := utils.DualAuthManager.IssueToken(token, req.Username, clientIP)
+	if dualToken == "" {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"code":    429,
+			"message": "已达到最大并发限制，请稍后重试",
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "双控验证通过",
@@ -598,10 +608,12 @@ func UploadFile(c *gin.Context) {
 				return
 			}
 			filename := part.FileName()
-			if filename == "" {
+			// 校验文件名合法性，防止 ../ 路径穿越
+			if err := utils.ValidateFileName(filename); err != nil {
+				part.Close()
 				c.JSON(http.StatusBadRequest, gin.H{
 					"code":    400,
-					"message": "上传文件名为空",
+					"message": "上传文件名非法: " + err.Error(),
 				})
 				return
 			}
@@ -692,6 +704,15 @@ func CreateFolder(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{
 			"code":    403,
 			"message": err.Error(),
+		})
+		return
+	}
+
+	// 校验目录名合法性，防止 ../ 路径穿越
+	if err := utils.ValidateFileName(req.Name); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "目录名非法: " + err.Error(),
 		})
 		return
 	}
@@ -1109,10 +1130,11 @@ func RenamePath(c *gin.Context) {
 		return
 	}
 
-	if strings.Contains(req.NewName, "/") || req.NewName == "." || req.NewName == ".." {
+	// 校验新名称合法性，防止路径穿越
+	if err := utils.ValidateFileName(req.NewName); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
-			"message": "名称包含非法字符",
+			"message": "名称包含非法字符: " + err.Error(),
 		})
 		return
 	}

@@ -16,13 +16,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SystemConfig结构体用于存储系统相关配置信息
+// SystemConfig 结构体用于存储系统相关配置信息
 type SystemConfig struct {
 	Port              int             `yaml:"port"`
 	Mode              string          `yaml:"mode"`            // debug or release
-	RSAPrivateKeyPath string          `yaml:"rsa-private-key"` // RSA私钥路径（用于解密前端敏感信息）
+	RSAPrivateKeyPath string          `yaml:"rsa-private-key"` // RSA 私钥路径（用于解密前端敏感信息）
+	RSAPublicKeyPath  string          `yaml:"rsa-public-key"`  // RSA 公钥路径（用于加密前端数据）
 	ConfigKeyPath     string          `yaml:"config-key"`      // 配置加密私钥路径（用于解密 config.yml 中的 ENC[] 字段）
-	RSAPrivateKey     *rsa.PrivateKey `yaml:"-"`               // 解析RSA私钥
+	RSAPrivateKey     *rsa.PrivateKey `yaml:"-"`               // 解析 RSA 私钥
+	RSAPublicKey      *rsa.PublicKey  `yaml:"-"`               // 解析 RSA 公钥
 }
 
 // DatabaseConfig结构体用于存储数据库相关配置信息
@@ -156,13 +158,20 @@ func init() {
 		fmt.Printf("解析配置失败,err: %v \n", err)
 	}
 
-	// 解析RSA私钥并存储到全局变量中，供后续解密使用
+	// 解析 RSA 私钥并存储到全局变量中，供后续解密使用
 	GlobalConfig.System.RSAPrivateKey, err = parsePrivateKey()
 	if err != nil {
-		fmt.Printf("解析RSA私钥失败, err: %v \n", err)
+		fmt.Printf("解析 RSA 私钥失败，err: %v \n", err)
 		return
 	}
-
+	
+	// 解析 RSA 公钥并存储到全局变量中，供后续加密使用
+	// 注意：公钥解析失败不阻断启动（向后兼容旧部署），仅记录警告
+	GlobalConfig.System.RSAPublicKey, err = parsePublicKey()
+	if err != nil {
+		fmt.Printf("警告：解析 RSA 公钥失败，加密功能将不可用，err: %v \n", err)
+	}
+	
 	// 解密配置中的加密字段（ENC[...] 格式）
 	if err := DecryptConfig(); err != nil {
 		fmt.Printf("解密配置字段失败, err: %v \n", err)
@@ -171,9 +180,9 @@ func init() {
 
 }
 
-// ! 从文件中读取并解析RSA私钥(用于解密前端敏感信息)
+// ! 从文件中读取并解析 RSA 私钥 (用于解密前端敏感信息)
 func parsePrivateKey() (*rsa.PrivateKey, error) {
-	// 从配置文件中获取RSA私钥路径
+	// 从配置文件中获取 RSA 私钥路径
 	privateKeyPath := GlobalConfig.System.RSAPrivateKeyPath
 	privateKeyBytes, err := os.ReadFile(privateKeyPath)
 	if err != nil {
@@ -185,6 +194,41 @@ func parsePrivateKey() (*rsa.PrivateKey, error) {
 	}
 
 	return x509.ParsePKCS1PrivateKey(block.Bytes)
+}
+
+// ! 从文件中读取并解析 RSA 公钥 (用于加密前端数据)
+func parsePublicKey() (*rsa.PublicKey, error) {
+	// 从配置文件中获取 RSA 公钥路径
+	publicKeyPath := GlobalConfig.System.RSAPublicKeyPath
+	if publicKeyPath == "" {
+		return nil, errors.New("RSA 公钥路径未配置")
+	}
+	publicKeyBytes, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(publicKeyBytes)
+	if block == nil {
+		return nil, errors.New("failed to decode PEM block")
+	}
+
+	// 尝试解析为 PKIX(常见格式)
+	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err == nil {
+		// 断言为 RSA 公钥类型
+		rsaPub, ok := pubKey.(*rsa.PublicKey)
+		if !ok {
+			return nil, errors.New("公钥不是 RSA 类型")
+		}
+		return rsaPub, nil
+	}
+
+	// 尝试解析为 PKCS1（兼容旧格式）
+	pubKey2, err2 := x509.ParsePKCS1PublicKey(block.Bytes)
+	if err2 != nil {
+		return nil, fmt.Errorf("无法解析 RSA 公钥：%v or %v", err, err2)
+	}
+	return pubKey2, nil
 }
 
 // decryptConfigField 解密单个配置字段

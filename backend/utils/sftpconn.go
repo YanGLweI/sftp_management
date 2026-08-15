@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/sftp"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -157,16 +158,58 @@ func NewSFTPConnectionForModule(user, password, homePath, loginType, domainUser 
 
 // ResolvePath 校验并规范化请求路径，确保不超出连接允许的根路径
 // filepath.Clean 处理 ".." 穿越与重复斜杠（如 /hotlabel/../.. Clean 后为 /，前缀校验拒绝）
+// 边界处理：当根路径为 "/" 时，允许所有绝对路径
+// 越界时记录警告日志（便于审计可疑路径尝试），并返回错误
 func (conn *SFTPConnection) ResolvePath(requestPath string) (string, error) {
 	cleaned := filepath.Clean(requestPath)
 	if conn.HomePath == "" {
 		return cleaned, nil // 普通连接不限制
 	}
 	home := filepath.Clean(conn.HomePath)
-	if cleaned == home || strings.HasPrefix(cleaned, home+string(filepath.Separator)) {
+	if cleaned == home {
 		return cleaned, nil
 	}
+	// home 为 "/" 时，所有绝对路径都在允许范围内（len(cleaned) > len(home) 且首位为 /）
+	if home == "/" {
+		if strings.HasPrefix(cleaned, "/") && len(cleaned) > 1 {
+			return cleaned, nil
+		}
+		logrus.WithFields(logrus.Fields{
+			"user":       conn.Username,
+			"loginType":  conn.LoginType,
+			"domainUser": conn.DomainUser,
+			"homePath":   conn.HomePath,
+			"request":    requestPath,
+		}).Warn("可疑路径尝试：路径超出允许范围")
+		return "", fmt.Errorf("路径超出允许范围: %s", requestPath)
+	}
+	// 前缀校验：确保 cleaned 在 home 目录内
+	if strings.HasPrefix(cleaned, home) && len(cleaned) > len(home) && cleaned[len(home)] == '/' {
+		return cleaned, nil
+	}
+	logrus.WithFields(logrus.Fields{
+		"user":       conn.Username,
+		"loginType":  conn.LoginType,
+		"domainUser": conn.DomainUser,
+		"homePath":   conn.HomePath,
+		"request":    requestPath,
+	}).Warn("可疑路径尝试：路径超出允许范围")
 	return "", fmt.Errorf("路径超出允许范围: %s", requestPath)
+}
+
+// ValidateFileName 校验文件名/目录名合法性，防止路径穿越
+// 拒绝：空名称、"."、".."、包含路径分隔符（/ 或 \）的名称
+func ValidateFileName(name string) error {
+	if name == "" {
+		return fmt.Errorf("名称不能为空")
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("名称不能为 . 或 ..")
+	}
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("名称不能包含路径分隔符")
+	}
+	return nil
 }
 
 // ! 初始化SFTP连接（密钥登录）
