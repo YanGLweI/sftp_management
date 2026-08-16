@@ -33,22 +33,17 @@
           <div class="charts" ref="charts"></div>
         </el-col>
         <el-col :span="6" class="right1">
-          <h3>SFTP{{ title }}排行 Top6</h3>
-          <ul>
-            <li v-for="(user, index) in userRankList" :key="index">
-              <span :class="index < 3 ? 'rindex' : 'rindex1'">{{ user.rank }}</span>
-              <span>{{ user.username }}</span>
-              <span class="rvalue">{{ user.count.toLocaleString() }}</span>
+          <h3><span class="title-decorator"></span>SFTP{{ title }}排行 Top6</h3>
+          <ul v-if="userRankList && userRankList.length > 0">
+            <li class="rank-row" v-for="(user, index) in userRankList" :key="index">
+              <div class="rank-bar" :class="{ 'rank-bar--low': index >= 3 }" :style="{ width: barPercent(user.count) }"></div>
+              <span class="rank-badge" :class="'rank-badge--' + (index + 1)">{{ user.rank }}</span>
+              <span class="rank-name" :title="user.username">{{ user.username }}</span>
+              <span class="rank-value">{{ user.count.toLocaleString() }}</span>
             </li>
-            <!-- 兼容处理：如果数据未加载完成或为空 -->
-            <template v-if="!userRankList || userRankList.length === 0">
-              <li v-for="i in 7" :key="i">
-                <span :class="i <= 3 ? 'rindex' : 'rindex1'">{{ i }}</span>
-                <span>暂无数据</span>
-                <span class="rvalue">0</span>
-              </li>
-            </template>
           </ul>
+          <!-- 空状态提示 -->
+          <div v-else class="empty-tip">暂无数据</div>
         </el-col>
       </el-row>
     </div>
@@ -72,8 +67,23 @@ export default {
       barCharts: null,
       // 收集日历数据
       date: [],
-      userRankList: []  // 新增：用户排行榜数据
+      userRankList: []
     };
+  },
+  computed: {
+    // 标题
+    title() {
+      return this.activeName == "sale" ? "传输量" : "访问量";
+    },
+    ...mapState({
+      listState: (state) => state.home.list,
+    }),
+    // 获取最大数量用于计算条形宽度比例
+    maxCount() {
+      if (!this.userRankList || this.userRankList.length === 0) return 1;
+      const counts = this.userRankList.map(item => item.count);
+      return Math.max(...counts, 1);
+    }
   },
   mounted() {
     // 初始化 echarts 实例
@@ -143,15 +153,6 @@ export default {
       }
     });
   },
-  computed: {
-    // 标题
-    title() {
-      return this.activeName == "sale" ? "传输量" : "访问量";
-    },
-    ...mapState({
-      listState: (state) => state.home.list,
-    }),
-  },
   // 监听
   watch: {
     // 监听 title 变化。改变数据
@@ -214,6 +215,12 @@ export default {
       }
     },
     
+    // 计算条形宽度百分比（保底 8% 避免 0 值行完全无条）
+    barPercent(count) {
+      const percentage = Math.max((count / this.maxCount) * 100, 8);
+      return `${percentage}%`;
+    },
+    
     // 今日
     setDay() {
       dayjs();
@@ -274,35 +281,117 @@ export default {
 .right1 > h3 {
   margin: 0;
   padding: 0;
+  font-size: 14px;
+}
+.title-decorator {
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  background: linear-gradient(to bottom, #409eff, #3a8ee6);
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 6px;
 }
 ul {
   list-style: none;
   width: 100%;
   height: 250px;
   padding: 0;
+  box-sizing: border-box;
 }
 ul > li {
-  height: 8%;
-  margin: 15px 0;
+  position: relative;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
-.rindex {
-  float: left;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: black;
+
+/* 排行榜条形图样式 */
+.rank-row {
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: 0 10px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.rank-bar {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 0;
+  background: linear-gradient(90deg, rgba(64, 158, 255, 0.22), rgba(64, 158, 255, 0.08));
+  border-radius: 6px;
+  z-index: 0;
+  transition: width 0.6s ease-out;
+  pointer-events: none;
+}
+
+.rank-bar.rank-bar--low {
+  background: linear-gradient(90deg, rgba(64, 158, 255, 0.15), rgba(64, 158, 255, 0.05));
+}
+
+.rank-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: #e4e7ed;
+  color: #707d92;
+  text-align: center;
+  line-height: 24px;
+  font-size: 12px;
+  font-weight: bold;
+  z-index: 1;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.rank-badge.rank-badge--1 {
+  background: linear-gradient(135deg, #F7B500, #FFD700);
   color: white;
-  text-align: center;
-  margin-right: 20px;
+  box-shadow: 0 2px 6px rgba(247, 181, 0, 0.3);
 }
-.rindex1 {
-  float: left;
-  width: 20px;
-  height: 20px;
-  text-align: center;
-  margin-right: 20px;
+
+.rank-badge.rank-badge--2 {
+  background: linear-gradient(135deg, #A3ADC2, #C0C8D8);
+  color: white;
+  box-shadow: 0 2px 6px rgba(163, 173, 194, 0.3);
 }
-.rvalue {
-  float: right;
+
+.rank-badge.rank-badge--3 {
+  background: linear-gradient(135deg, #D98E5F, #E8AA85);
+  color: white;
+  box-shadow: 0 2px 6px rgba(217, 142, 95, 0.3);
+}
+
+.rank-name {
+  flex: 1;
+  font-size: 13px;
+  color: #303133;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1;
+}
+
+.rank-value {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 600;
+  min-width: 70px;
+  text-align: right;
+  z-index: 1;
+  font-feature-settings: "tnum";
+}
+
+.empty-tip {
+  text-align: center;
+  color: #909399;
+  padding: 60px 0;
+  font-size: 13px;
 }
 </style>
