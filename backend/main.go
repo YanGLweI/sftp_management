@@ -70,6 +70,9 @@ func main() {
 	// 确保超级管理员角色拥有新增的 LDAP 管理菜单权限（兼容已有部署）
 	common.EnsureSuperAdminLDAPManagementMenu()
 
+	// 确保超级管理员角色拥有新增的中国联通日志菜单权限（兼容已有部署）
+	common.EnsureSuperAdminChinaUnicomLogMenu()
+
 	// 启动调度器
 	go scheduler.Run()
 

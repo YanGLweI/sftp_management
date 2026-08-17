@@ -99,7 +99,7 @@ func LoginSFTP(c *gin.Context) {
 		// 解密密码
 		decryptedPassword, decerr := tools.DecryptPassword(sftpLogin.Password)
 		if decerr != nil {
-			recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 密码解密失败", "", "")
+			recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 密码解密失败", "", "", loginSourceType(sftpLogin.LoginType))
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"code":    500,
 				"message": "<密码错误> " + decerr.Error(),
@@ -121,7 +121,7 @@ func LoginSFTP(c *gin.Context) {
 				// 1. LDAP 验证域账号 + 安全组成员身份
 				ldapUserInfo, statusCode, ldapErr := models.AuthenticateLDAPWithGroup(sftpLogin.Username, decryptedPassword, "")
 				if ldapErr != nil {
-					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 域控验证失败: "+ldapErr.Error(), "", "")
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 域控验证失败: "+ldapErr.Error(), "", "", loginSourceType(sftpLogin.LoginType))
 					c.JSON(http.StatusOK, gin.H{
 						"code":    statusCode,
 						"message": "域控验证失败: " + ldapErr.Error(),
@@ -131,7 +131,7 @@ func LoginSFTP(c *gin.Context) {
 
 				// 1.5 角色白名单校验：域账号的安全组（memberOf）匹配角色，检查角色是否在模块 enabled_roles 中
 				if moduleConfig != nil && !CheckLDAPRolePermission(ldapUserInfo["memberOf"], sftpLogin.LoginType) {
-					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 角色无权限", "", "")
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 角色无权限", "", "", loginSourceType(sftpLogin.LoginType))
 					c.JSON(http.StatusForbidden, gin.H{
 						"code":    403,
 						"message": "您的角色无权登录该模块",
@@ -149,7 +149,7 @@ func LoginSFTP(c *gin.Context) {
 				}
 				conn, err = utils.NewSFTPConnectionForModule(account.SFTPUsername, account.SFTPPassword, rootPath, sftpLogin.LoginType, sftpLogin.Username)
 				if err != nil {
-					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 专用账号连接失败: "+err.Error(), "", "")
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 专用账号连接失败: "+err.Error(), "", "", loginSourceType(sftpLogin.LoginType))
 					c.JSON(http.StatusInternalServerError, gin.H{
 						"code":    500,
 						"message": "专用账号连接失败: " + err.Error(),
@@ -161,7 +161,7 @@ func LoginSFTP(c *gin.Context) {
 				// 1. 平台本地账号验证（启用状态、bcrypt密码、失败锁定、密码过期检查）
 				localUser, expired, localErr := models.AuthenticateLocal(sftpLogin.Username, decryptedPassword)
 				if localErr != nil {
-					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 本地账号验证失败: "+localErr.Error(), "", "")
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 本地账号验证失败: "+localErr.Error(), "", "", loginSourceType(sftpLogin.LoginType))
 					c.JSON(http.StatusOK, gin.H{
 						"code":    400,
 						"message": "本地账号验证失败: " + localErr.Error(),
@@ -169,7 +169,7 @@ func LoginSFTP(c *gin.Context) {
 					return
 				}
 				if expired {
-					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 密码已过期", "", "")
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 密码已过期", "", "", loginSourceType(sftpLogin.LoginType))
 					c.JSON(http.StatusOK, gin.H{
 						"code":    400,
 						"message": "密码已过期，请先在平台修改密码",
@@ -187,7 +187,7 @@ func LoginSFTP(c *gin.Context) {
 						})
 						return
 					}
-					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录需先修改密码", "", "")
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录需先修改密码", "", "", loginSourceType(sftpLogin.LoginType))
 					c.JSON(http.StatusOK, gin.H{
 						"code":    200,
 						"message": "该账号需先修改密码",
@@ -201,7 +201,7 @@ func LoginSFTP(c *gin.Context) {
 
 				// 2. 角色白名单校验：平台本地账号的角色必须在模块 enabled_roles 中
 				if moduleConfig != nil && (localUser.RoleID == nil || !CheckRolePermission(*localUser.RoleID, sftpLogin.LoginType)) {
-					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 角色无权限", "", "")
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 角色无权限", "", "", loginSourceType(sftpLogin.LoginType))
 					c.JSON(http.StatusForbidden, gin.H{
 						"code":    403,
 						"message": "您的角色无权登录该模块",
@@ -219,7 +219,7 @@ func LoginSFTP(c *gin.Context) {
 				}
 				conn, err = utils.NewSFTPConnectionForModule(account.SFTPUsername, account.SFTPPassword, rootPath, sftpLogin.LoginType, sftpLogin.Username)
 				if err != nil {
-					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 专用账号连接失败: "+err.Error(), "", "")
+					recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: 专用账号连接失败: "+err.Error(), "", "", loginSourceType(sftpLogin.LoginType))
 					c.JSON(http.StatusInternalServerError, gin.H{
 						"code":    500,
 						"message": "专用账号连接失败: " + err.Error(),
@@ -231,7 +231,7 @@ func LoginSFTP(c *gin.Context) {
 			// 普通密码登录：创建连接实例
 			conn, err = utils.NewSFTPConnection(sftpLogin.Username, decryptedPassword)
 			if err != nil {
-				recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: "+err.Error(), "", "")
+				recordSftpLog(c, sftpLogin.Username, "Login", "SFTP登录失败: "+err.Error(), "", "", loginSourceType(sftpLogin.LoginType))
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"code":    500,
 					"message": "<密码错误> " + err.Error(),
@@ -255,7 +255,7 @@ func LoginSFTP(c *gin.Context) {
 	})
 
 	// 记录SFTP登录成功日志（独立逻辑，不影响主流程）
-	recordSftpLog(c, sftpLogUsername(conn), "Login", "SFTP登录成功", conn.HomePath, "")
+	recordSftpLog(c, sftpLogUsername(conn), "Login", "SFTP登录成功", conn.HomePath, "", logSourceType(conn))
 }
 
 // 获取SFTP日志的操作者用户名（域账号优先，其次SFTP账号）
@@ -276,18 +276,44 @@ func getReviewer(c *gin.Context) string {
 	return utils.DualAuthManager.GetReviewer(dualToken, clientIP)
 }
 
+// 从请求中获取双控复核人账号（非消耗式）
+// 供上传场景使用：同一批次多个文件共享同一凭证（凭证在 TTL 内可复用），
+// 若在此处消耗凭证，则批量的第二个文件起会因凭证失效而返回 428 需要双控验证
+func peekReviewer(c *gin.Context) string {
+	dualToken := c.GetHeader("X-Dual-Token")
+	clientIP := c.ClientIP()
+	return utils.DualAuthManager.PeekReviewer(dualToken, clientIP)
+}
+
+// 从连接获取日志来源标记：模块登录（hotlabel/chinaunicom）保持原值，普通登录标记为 normal
+func logSourceType(conn *utils.SFTPConnection) string {
+	if conn == nil || (conn.LoginType != "hotlabel" && conn.LoginType != "chinaunicom") {
+		return "normal"
+	}
+	return conn.LoginType
+}
+
+// 从登录请求类型获取日志来源标记：模块登录保持原值，普通登录标记为 normal
+func loginSourceType(loginType string) string {
+	if loginType == "hotlabel" || loginType == "chinaunicom" {
+		return loginType
+	}
+	return "normal"
+}
+
 // 记录SFTP登录与操作日志（独立逻辑，不影响主流程）
-func recordSftpLog(c *gin.Context, username, action, message, path, reviewer string) {
+func recordSftpLog(c *gin.Context, username, action, message, path, reviewer, sourceType string) {
 	if username == "" {
 		return
 	}
 	log := models.SftpLog{
-		Username: username,
-		Reviewer: reviewer,
-		IP:       c.ClientIP(),
-		Action:   action,
-		Message:  message,
-		Path:     path,
+		Username:      username,
+		Reviewer:      reviewer,
+		IP:            c.ClientIP(),
+		Action:        action,
+		Message:       message,
+		Path:          path,
+		LogSourceType: sourceType,
 	}
 	if err := log.CreateSftpLog(); err != nil {
 		fmt.Println("SFTP日志创建失败:", err)
@@ -418,8 +444,8 @@ func DualVerify(c *gin.Context) {
 		return
 	}
 	
-	// 日志记录：签发双控凭证
-	log.Printf("双控凭证签发：%s -> %s (IP: %s, TTL: 60s)", req.Username, dualToken[:8]+"...", clientIP)
+	// 日志记录：签发双控凭证（凭证 TTL 24 小时，单次操作消耗式）
+	log.Printf("双控凭证签发：%s -> %s (IP: %s, TTL: %s)", req.Username, dualToken[:8]+"...", clientIP, utils.DualAuthTokenTTL.String())
 	
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
@@ -443,8 +469,10 @@ func LogoutSFTP(c *gin.Context) {
 
 	// 登出前获取连接信息（用于记录日志）
 	var username string
+	var sourceType string
 	if conn, err := utils.SFTPConnManager.GetConn(token); err == nil {
 		username = sftpLogUsername(conn)
+		sourceType = logSourceType(conn)
 	}
 
 	// 从管理器中删除并关闭连接
@@ -462,7 +490,7 @@ func LogoutSFTP(c *gin.Context) {
 	})
 
 	// 记录SFTP登出日志（独立逻辑，不影响主流程）
-	recordSftpLog(c, username, "Logout", "SFTP登出", "", "")
+	recordSftpLog(c, username, "Logout", "SFTP登出", "", "", sourceType)
 }
 
 // ! 获取目录下的文件列表（通过Token获取连接）
@@ -689,7 +717,8 @@ func UploadFile(c *gin.Context) {
 	})
 
 	// 记录SFTP上传日志（独立逻辑，不影响主流程）
-	recordSftpLog(c, sftpLogUsername(conn), "Upload", "上传文件", uploadedFile, getReviewer(c))
+	// 使用 peekReviewer 非消耗式获取复核人：批量上传时同一凭证需供多个文件请求复用
+	recordSftpLog(c, sftpLogUsername(conn), "Upload", "上传文件", uploadedFile, peekReviewer(c), logSourceType(conn))
 }
 
 // ! CreateFolder 创建目录（适配Token）
@@ -769,7 +798,7 @@ func CreateFolder(c *gin.Context) {
 	})
 
 	// 记录SFTP创建目录日志（独立逻辑，不影响主流程）
-	recordSftpLog(c, sftpLogUsername(conn), "Mkdir", "创建目录: "+req.Name, filepath.Join(req.Path, req.Name), getReviewer(c))
+	recordSftpLog(c, sftpLogUsername(conn), "Mkdir", "创建目录: "+req.Name, filepath.Join(req.Path, req.Name), getReviewer(c), logSourceType(conn))
 }
 
 // ! DownloadFile 下载文件（适配Token）
@@ -878,7 +907,7 @@ func DownloadFile(c *gin.Context) {
 	}
 
 	// 记录SFTP下载日志（独立逻辑，不影响主流程）
-	recordSftpLog(c, sftpLogUsername(conn), "Download", "下载文件", filePath, getReviewer(c))
+	recordSftpLog(c, sftpLogUsername(conn), "Download", "下载文件", filePath, getReviewer(c), logSourceType(conn))
 }
 
 // 辅助函数：转义文件名，兼容IE/Edge等低版本浏览器（解决中文乱码）
@@ -971,7 +1000,7 @@ func DeletePath(c *gin.Context) {
 	})
 
 	// 记录SFTP删除日志（独立逻辑，不影响主流程）
-	recordSftpLog(c, sftpLogUsername(conn), "Delete", "删除", req.Path, getReviewer(c))
+	recordSftpLog(c, sftpLogUsername(conn), "Delete", "删除", req.Path, getReviewer(c), logSourceType(conn))
 }
 
 // ! 批量删除目录和文件
@@ -1120,7 +1149,7 @@ func BatchDelete(c *gin.Context) {
 		for _, res := range checkResults {
 			paths = append(paths, res.Path)
 		}
-		recordSftpLog(c, sftpLogUsername(conn), "BatchDelete", "批量删除"+fmt.Sprintf("（成功%d条）", successCount), strings.Join(paths, ","), getReviewer(c))
+		recordSftpLog(c, sftpLogUsername(conn), "BatchDelete", "批量删除"+fmt.Sprintf("（成功%d条）", successCount), strings.Join(paths, ","), getReviewer(c), logSourceType(conn))
 	}
 }
 
@@ -1204,7 +1233,7 @@ func RenamePath(c *gin.Context) {
 	})
 
 	// 记录SFTP重命名日志（独立逻辑，不影响主流程）
-	recordSftpLog(c, sftpLogUsername(conn), "Rename", "重命名为: "+req.NewName, req.OldPath, getReviewer(c))
+	recordSftpLog(c, sftpLogUsername(conn), "Rename", "重命名为: "+req.NewName, req.OldPath, getReviewer(c), logSourceType(conn))
 }
 
 // ! DownloadDirectory 下载目录
@@ -1291,7 +1320,7 @@ func DownloadDirectory(c *gin.Context) {
 	}
 
 	// 记录SFTP下载目录日志（独立逻辑，不影响主流程）
-	recordSftpLog(c, sftpLogUsername(conn), "Download", "下载目录", remoteDir, getReviewer(c))
+	recordSftpLog(c, sftpLogUsername(conn), "Download", "下载目录", remoteDir, getReviewer(c), logSourceType(conn))
 
 	log.Printf("目录打包下载完成：%s", remoteDir)
 }

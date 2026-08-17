@@ -18,8 +18,11 @@ type dualAuthEntry struct {
 }
 
 const (
-	// DualAuthTokenTTL 双控凭证默认有效期：60 秒
-	DualAuthTokenTTL = 60 * time.Second
+	// DualAuthTokenTTL 双控凭证有效期：24 小时
+	// 原为 60 秒，但因大批量/大文件上传可能超过 60 秒导致凭证过期（428 需要双控验证）
+	// 凭证虽长期有效，但每次独立写操作（删除/重命名等）仍由 GetReviewer 单次消耗，
+	// 上传批次由 PeekReviewer 非消耗式复用，不会造成安全风险
+	DualAuthTokenTTL = 24 * time.Hour
 	// MaxTokensPerSftpToken 同一 SFTP Token 最多签发并发双控 Token 数
 	MaxTokensPerSftpToken = 5
 	// DualAuthCleanupInterval 定期清理间隔：每 5 分钟
@@ -123,6 +126,28 @@ func (m *dualAuthManager) GetReviewer(dualToken, clientIP string) string {
 	}
 	// ✅ 单次使用后自动删除 Token
 	delete(m.tokenMap, dualToken)
+	return entry.Reviewer
+}
+
+// PeekReviewer 获取双控凭证对应的复核人账号（非消耗式）
+// - 与 GetReviewer 相同，但不删除 Token，供同一凭证批量复用场景使用
+// - 适用于批量上传：一个批次内的多个文件请求共享同一凭证，
+//   由 CleanupExpiredTokens 在过期后统一清理（默认 24 小时 TTL）
+func (m *dualAuthManager) PeekReviewer(dualToken, clientIP string) string {
+	if dualToken == "" {
+		return ""
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	entry, exists := m.tokenMap[dualToken]
+	if !exists {
+		return ""
+	}
+	// ✅ 验证是否过期
+	if time.Now().After(entry.ExpireAt) {
+		return ""
+	}
 	return entry.Reviewer
 }
 

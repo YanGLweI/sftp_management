@@ -25,6 +25,7 @@ func GetAllMenus(c *gin.Context) {
 		{"routeName": "Log", "menuTitle": "日志管理", "icon": "el-icon-tickets", "children": []gin.H{
 			{"routeName": "PlatformLog", "menuTitle": "平台日志"},
 			{"routeName": "SftpLog", "menuTitle": "SFTP日志"},
+			{"routeName": "ChinaUnicomLog", "menuTitle": "中国联通日志"},
 		}},
 		{"routeName": "System", "menuTitle": "系统安全", "icon": "el-icon-lock", "children": []gin.H{
 			{"routeName": "SystemUpdate", "menuTitle": "系统更新"},

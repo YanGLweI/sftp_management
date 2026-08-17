@@ -37,5 +37,7 @@ func registerUserRouter(r *gin.Engine) {
 		userGroup.GET("/log/sftplog/:date", middleware.RequireRoute("SftpLog"), controller.GetSftpLog)
 		// ! SFTP登录与操作日志：/log/sftploglist/:page/:limit?datetime=string&username=string
 		userGroup.GET("/log/sftploglist/:page/:limit", middleware.RequireRoute("SftpLog"), controller.GetSftpLogList)
+		// ! 中国联通日志：/log/chinaunicomloglist/:page/:limit?datetime=string&username=string
+		userGroup.GET("/log/chinaunicomloglist/:page/:limit", middleware.RequireRoute("ChinaUnicomLog"), controller.GetChinaUnicomLogList)
 	}
 }

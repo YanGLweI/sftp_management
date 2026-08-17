@@ -61,10 +61,10 @@
           v-if="moduleConfigs.hotlabel && moduleConfigs.hotlabel.enabled">
           <el-form :model="SftpForm" label-position="top">
             <template v-if="moduleConfigs.hotlabel.loginType === 'local'">
-              <el-form-item label="本地账号" :label-width="SftpFormLabelWidth">
+              <el-form-item label="账号" :label-width="SftpFormLabelWidth">
                 <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
               </el-form-item>
-              <el-form-item label="本地密码" :label-width="SftpFormLabelWidth">
+              <el-form-item label="密码" :label-width="SftpFormLabelWidth">
                 <el-input
                   ref="labelLocal"
                   v-model="SftpForm.password"
@@ -77,10 +77,10 @@
               </el-form-item>
             </template>
             <template v-else>
-              <el-form-item label="域账号" :label-width="SftpFormLabelWidth">
+              <el-form-item label="账号" :label-width="SftpFormLabelWidth">
                 <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
               </el-form-item>
-              <el-form-item label="域密码" :label-width="SftpFormLabelWidth">
+              <el-form-item label="密码" :label-width="SftpFormLabelWidth">
                 <el-input
                   ref="label"
                   v-model="SftpForm.password"
@@ -101,10 +101,10 @@
           v-if="moduleConfigs.chinaunicom && moduleConfigs.chinaunicom.enabled">
           <el-form :model="SftpForm" label-position="top">
             <template v-if="moduleConfigs.chinaunicom.loginType === 'local'">
-              <el-form-item label="本地账号" :label-width="SftpFormLabelWidth">
+              <el-form-item label="账号" :label-width="SftpFormLabelWidth">
                 <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
               </el-form-item>
-              <el-form-item label="本地密码" :label-width="SftpFormLabelWidth">
+              <el-form-item label="密码" :label-width="SftpFormLabelWidth">
                 <el-input
                   ref="unicomLabelLocal"
                   v-model="SftpForm.password"
@@ -117,10 +117,10 @@
               </el-form-item>
             </template>
             <template v-else>
-              <el-form-item label="域账号" :label-width="SftpFormLabelWidth">
+              <el-form-item label="账号" :label-width="SftpFormLabelWidth">
                 <el-input v-model="SftpForm.username" autocomplete="off"></el-input>
               </el-form-item>
-              <el-form-item label="域密码" :label-width="SftpFormLabelWidth">
+              <el-form-item label="密码" :label-width="SftpFormLabelWidth">
                 <el-input
                   ref="unicomLabel"
                   v-model="SftpForm.password"

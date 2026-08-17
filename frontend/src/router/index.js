@@ -125,6 +125,12 @@ export const constantRoutes = [
         component: () => import('@/views/log/SftpLog'),
         meta: { title: 'SFTP日志' },
       },
+      {
+        path: 'chinaunicomlog',
+        name: 'ChinaUnicomLog',
+        component: () => import('@/views/log/ChinaUnicomLog'),
+        meta: { title: '中国联通日志' },
+      },
     ],
   },
   // ! 系统安全

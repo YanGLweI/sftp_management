@@ -14,18 +14,18 @@
         <el-form-item label="复核账号">
           <el-input
             v-model="form.username"
-            placeholder="请输入另一域控账号"
+            placeholder="请输入另一账号"
             autocomplete="off"
             ref="dualUsername"
             @keyup.enter.native="confirm"
           ></el-input>
         </el-form-item>
-        <el-form-item label="域密码">
+        <el-form-item label="密码">
           <el-input
             v-model="form.password"
             type="password"
             show-password
-            placeholder="请输入域密码"
+            placeholder="请输入密码"
             @keyup.enter.native="confirm"
           ></el-input>
         </el-form-item>
@@ -79,7 +79,7 @@ export default {
     async confirm() {
       const { username, password } = this.form
       if (!username || !password) {
-        this.errorMsg = '请输入复核账号和域密码'
+        this.errorMsg = '请输入复核账号和密码'
         return
       }
       if (this.loginDomainUser && username.toLowerCase() === this.loginDomainUser.toLowerCase()) {

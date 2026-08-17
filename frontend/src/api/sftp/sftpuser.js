@@ -35,6 +35,9 @@ export const reqSftpLog = (date) => request({url:`/user/log/sftplog/${date}`,met
 // ! 获取SFTP登录与操作日志 /user/log/sftploglist/{page}/{limit} get
 export const reqSftpLogList = (page,limit,searchObj) => request({url:`/user/log/sftploglist/${page}/${limit}`,method:'get',params:searchObj})
 
+// ! 获取中国联通日志 /user/log/chinaunicomloglist/{page}/{limit} get
+export const reqChinaUnicomLogList = (page,limit,searchObj) => request({url:`/user/log/chinaunicomloglist/${page}/${limit}`,method:'get',params:searchObj})
+
 // ? SFTP传输模块
 // ! 登录sftp /sftp/login post
 export const reqSftpLogin = (data) => request({url:'/sftp/login',method:'post',data})

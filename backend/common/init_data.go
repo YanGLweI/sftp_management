@@ -147,6 +147,7 @@ func InitData() {
 		{RouteName: "Log", MenuTitle: "日志管理"},
 		{RouteName: "PlatformLog", MenuTitle: "平台日志"},
 		{RouteName: "SftpLog", MenuTitle: "SFTP 日志"},
+		{RouteName: "ChinaUnicomLog", MenuTitle: "中国联通日志"},
 		{RouteName: "System", MenuTitle: "系统安全"},
 		{RouteName: "SystemUpdate", MenuTitle: "系统更新"},
 		{RouteName: "Antivirus", MenuTitle: "病毒管理"},
@@ -338,6 +339,41 @@ func EnsureSuperAdminSftpModuleMenus() {
 				logrus.Printf("EnsureSuperAdminSftpModuleMenus: 添加菜单 %s 失败: %v", m.RouteName, err)
 			} else {
 				logrus.Printf("EnsureSuperAdminSftpModuleMenus: 为超级管理员添加菜单 %s", m.RouteName)
+			}
+		}
+	}
+}
+
+// EnsureSuperAdminChinaUnicomLogMenu 确保超级管理员角色拥有新增的中国联通日志菜单权限
+// 兼容已有部署：旧版本的超级管理员角色菜单列表中不包含新菜单，此处补充
+func EnsureSuperAdminChinaUnicomLogMenu() {
+	role, err := models.GetRoleByName("超级管理员")
+	if err != nil {
+		logrus.Printf("EnsureSuperAdminChinaUnicomLogMenu: 超级管理员角色不存在: %v", err)
+		return
+	}
+
+	// 需要确保存在的菜单
+	requiredMenus := []struct {
+		RouteName string
+		MenuTitle string
+	}{
+		{RouteName: "ChinaUnicomLog", MenuTitle: "中国联通日志"},
+	}
+
+	// 补充缺失的菜单（直接查询 RoleMenu 表判断是否存在，避免 Preload 缺失导致重复插入）
+	for _, m := range requiredMenus {
+		var count int64
+		dao.DB.Model(&models.RoleMenu{}).Where("role_id = ? AND route_name = ?", role.ID, m.RouteName).Count(&count)
+		if count == 0 {
+			if err := dao.DB.Create(&models.RoleMenu{
+				RoleID:    role.ID,
+				RouteName: m.RouteName,
+				MenuTitle: m.MenuTitle,
+			}).Error; err != nil {
+				logrus.Printf("EnsureSuperAdminChinaUnicomLogMenu: 添加菜单 %s 失败: %v", m.RouteName, err)
+			} else {
+				logrus.Printf("EnsureSuperAdminChinaUnicomLogMenu: 为超级管理员添加菜单 %s", m.RouteName)
 			}
 		}
 	}

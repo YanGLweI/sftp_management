@@ -47,20 +47,20 @@
 
         <div style="width: 360px; display: flex; align-items: center; flex-wrap: nowrap; gap: 8px;">
           <el-button icon="el-icon-refresh" circle size="mini" @click="fetchFiles()"></el-button>
-          <el-upload
-            class="upload"
-            :action="uploadUrl"
-            :data="{ path: currentPath }"
-            :headers="uploadHeaders"
-            :on-success="handleUploadSuccess"
-            :on-error="handleUploadError"
-            :before-upload="beforeUpload"
-            :show-file-list="false"
+          <input
+            ref="fileInput"
+            type="file"
             multiple
-            :on-progress="handleUploadProgress"
-          >
-            <el-button type="primary" size="mini" icon="el-icon-document-add" round>上传文件</el-button>
-          </el-upload>
+            style="display:none"
+            @change="handleFileSelect"
+          />
+          <el-button
+            type="primary"
+            size="mini"
+            icon="el-icon-document-add"
+            round
+            @click="$refs.fileInput.click()"
+          >上传文件</el-button>
 
           <el-button
             type="primary"
@@ -546,6 +546,7 @@ export default {
       // 拖拽上传相关
       dragOverlayVisible: false,      // 遮罩层显隐
       isUploading: false,              // 防止重复上传
+      uploadDualToken: null,           // 上传操作专用的双控凭证（私有，与共享 header/sessionStorage 隔离，避免与其他操作互相清除）
       // 传输队列相关
       transferQueue: [],      // 待上传/上传中条目 {id,file,name,size,remotePath,status,percent}
       failedTransfers: [],    // 传输失败记录（带原因，保留 file 供重试）
@@ -639,19 +640,38 @@ export default {
   },
   methods: {
     // 双控验证：验证通过后设置 X-Dual-Token 请求头并返回凭证
-    // 已持有有效凭证（60秒内）时直接复用，避免同一批次操作重复弹窗
+    // 已持有有效凭证时直接复用（不设 60 秒 TTL 限制，避免大批量/大文件上传超时导致凭证过期异常）
     async requireDualVerify(actionDesc) {
       if (!this.dualVerifyEnabled) return null
-      if (this.uploadHeaders['X-Dual-Token']) return this.uploadHeaders['X-Dual-Token']
+      // 已有凭证直接复用，同一批次内不再重复弹窗；
+      // 凭证生命周期由后端 TTL 与 clearDualToken() 显式清除共同管理
+      if (this.uploadHeaders['X-Dual-Token']) {
+        return this.uploadHeaders['X-Dual-Token']
+      }
       const token = await this.$refs.dualVerify.verify(actionDesc)
       this.$set(this.uploadHeaders, 'X-Dual-Token', token)
       sessionStorage.setItem('dual_token', token)
       return token
     },
-    // 清除双控凭证头（单次写操作完成后调用，强制下次操作重新验证；上传批次由60秒有效期兜底，不在此清除）
+    // 清除双控凭证头（单次写操作完成后调用，强制下次操作重新验证；上传批次由后端 TTL 兑底，不在此清除）
     clearDualToken() {
       this.$delete(this.uploadHeaders, 'X-Dual-Token')
       sessionStorage.removeItem('dual_token')
+    },
+    // 获取上传操作专用的双控凭证（私有存储，不写入共享 header/sessionStorage）
+    // 用于队列上传/拖拽/按钮多选等批量上传场景：批次内复用同一凭证，
+    // 与其他操作（删除/重命名等）的凭证互相独立，互不干扰
+    async getUploadDualToken(actionDesc) {
+      if (!this.dualVerifyEnabled) return null
+      // 已有上传凭证直接复用（同一批次内不再重复弹窗）
+      if (this.uploadDualToken) return this.uploadDualToken
+      const token = await this.$refs.dualVerify.verify(actionDesc)
+      this.uploadDualToken = token
+      return token
+    },
+    // 清除上传操作专用凭证（批量上传批次开始前/完成后调用）
+    clearUploadDualToken() {
+      this.uploadDualToken = null
     },
     // 初始化布局宽度
     initLayout() {
@@ -919,64 +939,90 @@ export default {
       this.fetchFiles(paths.length ? `/${paths.join('/')}` : '/')
       return true
     },
-    // 上传前检查
-    async beforeUpload(file) {
-      // 上传文件大小不能超过 5GB
-      const isValid = file.size / 1024 / 1024 < 1024 * 5
-      if (!isValid) {
-        this.$message.error('不能超过 5GB')
-        return false
+    // 上传文件按钮：选择文件后串行批量上传（与拖拽上传 handleDrop 共用流程）
+    async handleFileSelect(event) {
+      const files = Array.from(event.target.files)
+      if (files.length === 0) return
+
+      // 【关键】新操作开始前清除旧的上传专用 token
+      this.clearUploadDualToken()
+
+      if (this.isUploading) {
+        this.$message.warning('正在上传中，请稍后再试')
+        event.target.value = ''
+        return
       }
-      // 中国联通会话：上传前需双控验证（同一批次多个文件只验证一次）
-      if (this.dualVerifyEnabled) {
+
+      // 文件大小预检（不能超过5GB）
+      const invalidFile = files.find(f => f.size / 1024 / 1024 >= 1024 * 5)
+      if (invalidFile) {
+        this.$message.error(`文件 ${invalidFile.name} 超过 5GB，上传终止`)
+        event.target.value = ''
+        return
+      }
+
+      // 开始上传
+      this.isUploading = true
+      this.showUploadProgress = true
+      let successCount = 0
+      let failCount = 0
+
+      // 串行上传，并更新整体进度
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        const remotePath = (this.currentPath === '/' ? '/' : this.currentPath + '/') + file.name
         try {
-          await this.requireDualVerify(`上传文件到 ${this.currentPath}`)
-          return true
-        } catch (e) {
-          return false // 取消或失败，中止上传
+          await this.uploadSingleFile(file, (percent) => {
+            // 整体百分比 = 已完成文件 + 当前文件进度加权
+            this.uploadPercent = Math.floor(((i + percent / 100) / files.length) * 100)
+          })
+          successCount++
+          // 记录到成功的传输
+          this.successTransfers.push({
+            id: ++this.queueIdSeq,
+            name: file.name,
+            size: file.size,
+            remotePath,
+            time: this.nowStr()
+          })
+        } catch (err) {
+          console.error(err)
+          failCount++
+          // 记录到传输失败
+          this.failedTransfers.push({
+            id: ++this.queueIdSeq,
+            file: file,
+            name: file.name,
+            size: file.size,
+            remotePath,
+            reason: err.message || '上传失败',
+            time: this.nowStr()
+          })
         }
       }
-      return true
-    },
-    // 上传成功
-    handleUploadSuccess(response, file) {
-      this.$message.success('上传成功')
-      this.fetchFiles()
-      this.resetUploadProgress()
-      // 记录到成功的传输
-      const remotePath = (this.currentPath === '/' ? '/' : this.currentPath + '/') + file.name
-      this.successTransfers.push({
-        id: ++this.queueIdSeq,
-        name: file.name,
-        size: file.size,
-        remotePath,
-        time: this.nowStr()
-      })
-      this.queueTab = 'success'
-    },
-    // 上传失败
-    handleUploadError(err, file) {
-      this.$message.error('上传失败')
-      this.resetUploadProgress()
-      // 记录到传输失败
-      const remotePath = (this.currentPath === '/' ? '/' : this.currentPath + '/') + file.name
-      this.failedTransfers.push({
-        id: ++this.queueIdSeq,
-        file: file,
-        name: file.name,
-        size: file.size,
-        remotePath,
-        reason: err.message || '上传失败',
-        time: this.nowStr()
-      })
-      this.queueTab = 'failed'
+      this.uploadPercent = 100
+      this.isUploading = false
+      // 清空文件选择，允许重复选择同一批文件
+      event.target.value = ''
+      // 延迟重置进度条，避免一闪而过
+      setTimeout(() => {
+        this.resetUploadProgress()
+      }, 1000)
+
+      if (successCount > 0) {
+        this.$message.success(`成功上传 ${successCount} 个文件${failCount ? `，失败 ${failCount} 个` : ''}`)
+        this.fetchFiles() // 刷新列表
+      } else if (failCount > 0) {
+        this.$message.error('所有文件上传失败')
+      }
+      // 切换标签页：失败优先，其次成功
+      if (failCount > 0) {
+        this.queueTab = 'failed'
+      } else if (successCount > 0) {
+        this.queueTab = 'success'
+      }
     },
     // 上传进度
-    handleUploadProgress(e) {
-      this.uploadPercent = Math.round(e.percent)
-      this.showUploadProgress = true
-    },
-    // 重置进度
     resetUploadProgress() {
       this.showUploadProgress = false
       this.uploadPercent = 0
@@ -1349,6 +1395,9 @@ export default {
       // 立即隐藏遮罩层，避免重复触发
       this.dragOverlayVisible = false
       
+      // 【关键】新批次开始前清除旧的上传专用 token（不碰共享凭证）
+      this.clearUploadDualToken()
+      
       const files = Array.from(e.dataTransfer.files)
       if (files.length === 0) return
 
@@ -1356,17 +1405,8 @@ export default {
         this.$message.warning('正在上传中，请稍后再试')
         return
       }
-
-      // 中国联通会话：拖拽上传前需双控验证（批次一次）
-      if (this.dualVerifyEnabled) {
-        try {
-          await this.requireDualVerify(`上传 ${files.length} 个文件到 ${this.currentPath}`)
-        } catch (e) {
-          return // 取消或失败，中止上传
-        }
-      }
-
-      // 文件大小预检（不能超过5GB）
+      
+      // 文件大小预检（不能超过 5GB）
       const invalidFile = files.find(f => f.size / 1024 / 1024 >= 1024 * 5)
       if (invalidFile) {
         this.$message.error(`文件 ${invalidFile.name} 超过 5GB，上传终止`)
@@ -1435,8 +1475,19 @@ export default {
 
     // 单文件上传（使用与 el-upload 相同的接口和参数）
     // targetDir：指定上传目标目录，不传则回退到 this.currentPath（直接上传场景）
-    uploadSingleFile(file, onProgress, targetDir) {
-      return new Promise((resolve, reject) => {
+    // dualToken：外部传入的上传专用凭证（私有），不传则使用 uploadDualToken
+    async uploadSingleFile(file, onProgress, targetDir, dualToken) {
+      // 获取本次上传使用的双控凭证（私有 uploadDualToken，不写共享 header）
+      if (this.dualVerifyEnabled && !dualToken) {
+        try {
+          dualToken = await this.getUploadDualToken(`上传文件到 ${targetDir || this.currentPath}`)
+        } catch (e) {
+          throw new Error('双控验证失败')
+        }
+      }
+
+      // 内部发送请求；attempt > 1 表示重试（428 凭证失效后重新验证再发）
+      const doUpload = (attempt) => new Promise((resolve, reject) => {
         const formData = new FormData()
         // path 必须先于 file 追加：后端流式接收需要在读到文件内容前就知道目标路径
         formData.append('path', targetDir || this.currentPath)
@@ -1444,16 +1495,33 @@ export default {
 
         const xhr = new XMLHttpRequest()
         xhr.open('POST', this.uploadUrl, true)
-        // 设置请求头
+        // 设置请求头：跳过共享 X-Dual-Token，改用上传专用凭证（避免与单次操作互相清除）
         Object.keys(this.uploadHeaders).forEach(key => {
-          xhr.setRequestHeader(key, this.uploadHeaders[key])
+          if (key !== 'X-Dual-Token') {
+            xhr.setRequestHeader(key, this.uploadHeaders[key])
+          }
         })
-        xhr.onload = () => {
+        if (dualToken) {
+          xhr.setRequestHeader('X-Dual-Token', dualToken)
+        }
+        xhr.onload = async () => {
           // 后端成功/失败均返回 {code, message}（含 HTTP 400/500），失败原因优先取响应 message
           let res = null
           try {
             res = JSON.parse(xhr.responseText)
           } catch (e) { /* 非 JSON 响应体 */ }
+          // 双控凭证失效（428）：清除旧凭证，重新验证后重试一次
+          if (this.dualVerifyEnabled && res && res.code === 428 && attempt < 2) {
+            this.clearUploadDualToken()
+            try {
+              dualToken = await this.getUploadDualToken(`上传文件到 ${targetDir || this.currentPath}`)
+            } catch (e) {
+              reject(new Error('双控验证失败'))
+              return
+            }
+            doUpload(attempt + 1).then(resolve).catch(reject)
+            return
+          }
           if (xhr.status === 200 && res && res.code === 200) {
             resolve()
           } else {
@@ -1471,6 +1539,8 @@ export default {
         }
         xhr.send(formData)
       })
+
+      return doUpload(1)
     },
     // ===== 传输队列相关 =====
     // 离开队列卡片边界时取消高亮
@@ -1506,10 +1576,10 @@ export default {
     // 并发调度：最多 3 路并发，其余排队；完成后自动补位
     // onlyId 参数：单条目模式（选定上传），只上传指定条目，完成后不自动补位其他条目
     async pumpUploads(onlyId) {
-      // 中国联通会话：队列上传前需双控验证（批次一次，60秒凭证供并发3路复用）
+      // 中国联通会话：队列上传前需双控验证（使用上传专用私有凭证，不影响其他操作的共享凭证）
       if (this.dualVerifyEnabled) {
         try {
-          await this.requireDualVerify('上传队列文件到 SFTP')
+          await this.getUploadDualToken('上传队列文件到 SFTP')
         } catch (e) {
           return // 取消或失败，中止上传
         }
@@ -1523,7 +1593,7 @@ export default {
         entry.status = 'uploading'
         this.uploadingCount++
         const dir = entry.remotePath.substring(0, entry.remotePath.lastIndexOf('/')) || '/'
-        this.uploadSingleFile(entry.file, p => { entry.percent = p }, dir).then(() => {
+        this.uploadSingleFile(entry.file, p => { entry.percent = p }, dir, this.uploadDualToken).then(() => {
           this.transferQueue = this.transferQueue.filter(item => item.id !== entry.id)
           this.successTransfers.push({ id: entry.id, name: entry.name, size: entry.size, remotePath: entry.remotePath, time: this.nowStr() })
         }).catch(err => {
@@ -1534,8 +1604,11 @@ export default {
           this.uploadingCount--
           // 普通模式（全部上传/补位）完成后继续调度；单条目模式不自动补位其他条目
           if (!singleMode) this.pumpUploads()
-          // 队列已无进行中/待上传条目时刷新文件列表
-          if (!this.transferQueue.length) this.fetchFiles()
+          // 队列已无进行中/待上传条目时刷新文件列表并清除上传专用凭证
+          if (!this.transferQueue.length) {
+            this.fetchFiles()
+            this.clearUploadDualToken()
+          }
         })
       }
     },
@@ -1547,12 +1620,16 @@ export default {
     // 右键菜单：全部上传
     uploadAll() {
       this.closeCtxMenu()
+      // 【关键】新批次开始前清除旧的上传专用 token（不碰共享凭证，避免影响其他操作）
+      this.clearUploadDualToken()
       this.pumpUploads()
     },
     // 右键菜单：选定上传（只上传右键选中的文件，其他 pending 条目保持待上传不自动启动）
     uploadOne(row) {
       this.closeCtxMenu()
       if (!row || row.status !== 'pending') return
+      // 【关键】新操作开始前清除旧的上传专用 token
+      this.clearUploadDualToken()
       // 单条目模式：pumpUploads 只拾取指定 id 的条目，完成后不自动补位
       this.pumpUploads(row.id)
     },
@@ -1570,16 +1647,34 @@ export default {
       this.transferQueue = this.transferQueue.filter(item => item.status !== 'pending')
     },
     // 失败记录重试：重新入队并启动调度
-    retryFailed(row) {
+    async retryFailed(row) {
       this.closeCtxMenu()
+      // 【Fix 2】重试前必须先双控验证：清除旧的上传专用凭证，强制重新弹窗验证
+      if (this.dualVerifyEnabled) {
+        this.clearUploadDualToken()
+        try {
+          await this.getUploadDualToken(`重试失败文件 ${row.name}`)
+        } catch (e) {
+          return // 用户取消，不继续重试
+        }
+      }
       this.failedTransfers = this.failedTransfers.filter(item => item.id !== row.id)
       this.transferQueue.push({ id: ++this.queueIdSeq, file: row.file, name: row.name, size: row.size, remotePath: row.remotePath, status: 'pending', percent: 0 })
       this.queueTab = 'queue'
       this.pumpUploads()
     },
     // 全部失败记录重试：全部重新入队并启动调度
-    retryAllFailed() {
+    async retryAllFailed() {
       this.closeCtxMenu()
+      // 【Fix 2】批量重试前必须先双控验证：清除旧的上传专用凭证，强制重新弹窗验证
+      if (this.dualVerifyEnabled) {
+        this.clearUploadDualToken()
+        try {
+          await this.getUploadDualToken(`批量重试失败文件 (${this.failedTransfers.length} 个)`)
+        } catch (e) {
+          return // 用户取消，不继续重试
+        }
+      }
       this.failedTransfers.forEach(item => {
         this.transferQueue.push({ id: ++this.queueIdSeq, file: item.file, name: item.name, size: item.size, remotePath: item.remotePath, status: 'pending', percent: 0 })
       })
