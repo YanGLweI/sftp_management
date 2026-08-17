@@ -97,9 +97,8 @@
             :data="filteredFileList"
             v-loading="isLoading"
             :height="computeTableHeight()"
-            size="small"
-            :cell-style="{ padding: '8px 0' }"
-            :header-cell-style="{ height: '36px', fontSize: '13px' }"
+            :cell-style="{ padding: '8px 0', fontSize: '15px' }"
+            :header-cell-style="{ height: '36px', fontSize: '15px' }"
             border
             v-if="fileList"
           >
@@ -218,7 +217,7 @@
         </div>
         <el-tabs v-model="queueTab" @tab-click="onQueueTabClick">
           <el-tab-pane :label="`列队的文件 (${transferQueue.length})`" name="queue">
-            <el-table ref="queueTable" :data="transferQueue" size="mini" border @row-contextmenu="openCtxMenu" :max-height="queueTableMaxHeight">
+            <el-table ref="queueTable" :data="transferQueue" size="small" border @row-contextmenu="openCtxMenu" :max-height="queueTableMaxHeight">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column label="方向" width="70" align="center">
                 <template>--&gt;</template>
@@ -236,7 +235,7 @@
             </el-table>
           </el-tab-pane>
           <el-tab-pane :label="`传输失败 (${failedTransfers.length})`" name="failed">
-            <el-table ref="failedTable" :data="failedTransfers" size="mini" border :max-height="queueTableMaxHeight"
+            <el-table ref="failedTable" :data="failedTransfers" size="small" border :max-height="queueTableMaxHeight"
               @row-contextmenu="(row, column, event) => openCtxMenu(row, column, event, 'failed')">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
@@ -248,7 +247,7 @@
             </el-table>
           </el-tab-pane>
           <el-tab-pane :label="`成功的传输 (${successTransfers.length})`" name="success">
-            <el-table ref="successTable" :data="successTransfers" size="mini" border :max-height="queueTableMaxHeight"
+            <el-table ref="successTable" :data="successTransfers" size="small" border :max-height="queueTableMaxHeight"
               @row-contextmenu="(row, column, event) => openCtxMenu(row, column, event, 'success')">
               <el-table-column prop="name" label="本地文件" show-overflow-tooltip></el-table-column>
               <el-table-column prop="remotePath" label="远程文件" show-overflow-tooltip></el-table-column>
@@ -2207,7 +2206,7 @@ export default {
 .el-table th.el-table__cell,
 .el-table td.el-table__cell {
   padding: 8px 0;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 /* 弹框底部外边距 50px，避免贴住浏览器底部（全局 element-ui.scss 将 .el-dialog 默认 50px 底边距覆盖为 0） */
