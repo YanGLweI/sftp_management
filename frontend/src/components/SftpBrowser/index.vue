@@ -276,6 +276,13 @@
           <div class="ctx-menu-item" @click="handleDeleteFromCtx(ctxMenu.row)"><i class="el-icon-delete"></i> 删除</div>
           <div class="ctx-menu-item" @click="copyFileName(ctxMenu.row)"><i class="el-icon-document-copy"></i> 复制文件名</div>
         </template>
+        <template v-else-if="ctxMenu.ctx === 'search'">
+          <div class="ctx-menu-item" @click="locateFromSearch(ctxMenu.row)"><i class="el-icon-location"></i> 定位</div>
+          <div class="ctx-menu-item" @click="handleDownload(ctxMenu.row)"><i class="el-icon-download"></i> 下载</div>
+          <div class="ctx-menu-item" @click="handleRenameFromCtx(ctxMenu.row)"><i class="el-icon-edit"></i> 重命名</div>
+          <div class="ctx-menu-item" @click="handleDeleteFromCtx(ctxMenu.row)"><i class="el-icon-delete"></i> 删除</div>
+          <div class="ctx-menu-item" @click="copyFileName(ctxMenu.row)"><i class="el-icon-document-copy"></i> 复制文件名</div>
+        </template>
         <template v-else-if="ctxMenu.ctx === 'queue'">
           <div class="ctx-menu-item" @click="uploadAll">全部上传</div>
           <div class="ctx-menu-item" @click="uploadOne(ctxMenu.row)">选定上传</div>
@@ -368,7 +375,7 @@
         border
         max-height="400"
         v-if="deepSearchResults.length > 0 || isSearching"
-        @row-contextmenu="(row, column, event) => openCtxMenu(row, column, event, 'file')"
+        @row-contextmenu="(row, column, event) => openCtxMenu(row, column, event, 'search')"
       >
         <el-table-column prop="name" label="名称" sortable show-overflow-tooltip>
           <template slot-scope="{row}">
@@ -1843,6 +1850,24 @@ export default {
     handleDeleteFromCtx(row) {
       this.closeCtxMenu()
       this.handleDelete(row)
+    },
+    // 右键菜单：定位（关闭搜索弹框，文件跳转所在目录并聚焦，目录直接进入）
+    locateFromSearch(row) {
+      this.closeCtxMenu()
+      if (!row) return
+      this.showDeepSearchDialog = false
+      // 清除当前目录的搜索过滤，确保目标行在列表中可见
+      this.searchQuery = ''
+      this.lastFocusName = ''
+      if (row.isDir) {
+        // 目录：直接进入该目录
+        this.pendingFocusName = ''
+        this.fetchFiles(row.path)
+      } else {
+        // 文件：进入所在目录，加载后自动聚焦并滚动到该文件
+        this.pendingFocusName = row.name
+        this.fetchFiles(row.parentPath)
+      }
     },
     // 打开批量删除确认对话框
     openBatchDeleteDialog() {
