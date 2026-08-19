@@ -6,11 +6,15 @@
 
 ## 系统截图
 
-| 登录页（磨砂玻璃 + 极光背景） | 数据看板（传输量趋势 + Top10 排行） |
+**SFTP 浏览器**：双面板布局 + 传输队列，拖拽上传、键盘导航、右键菜单
+
+![SFTP 浏览器](docs/assets/sftp-browser.jpg)
+
+| 平台登录（磨砂玻璃 + 极光背景） | SFTP 登录（密码/密钥/标签上传/中国联通四通道） |
 |:---:|:---:|
-| ![登录页](docs/assets/login.png) | ![数据看板](docs/assets/dashboard.png) |
-| **SFTP 浏览器（双面板 + 传输队列）** | **RBAC 角色管理（菜单权限 + 安全组）** |
-| ![SFTP 浏览器](docs/assets/sftp-browser.png) | ![角色管理](docs/assets/roles.png) |
+| ![平台登录](docs/assets/login.jpg) | ![SFTP 登录](docs/assets/sftp-login.jpg) |
+| **数据看板（传输量趋势 + Top6 排行）** | **RBAC 角色管理（菜单权限 + 安全组）** |
+| ![数据看板](docs/assets/dashboard.jpg) | ![角色管理](docs/assets/roles.jpg) |
 
 ## 核心能力
 
