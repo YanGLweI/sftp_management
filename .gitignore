@@ -21,6 +21,9 @@ backend/data/
 backend/key/*.pem
 backend/certificate/*.crt
 
+# Runtime configuration (sensitive), use config.example.yml as template
+backend/config.yml
+
 .qoder/
 .verify_tmp/
 

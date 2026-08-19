@@ -1,0 +1,126 @@
+# ! 系统配置
+# 使用说明：复制本文件为 config.yml 后按实际环境修改
+# ENC[] 字段为使用 config-key 私钥加密后的密文，可通过系统加密工具生成
+system:
+  # 程序监听端口
+  port: 8888
+  mode: debug  # debug or release
+  # RSA私钥路径（用于解密前端敏感信息）
+  rsa-private-key: "./key/PrivateKey.pem"
+  # RSA公钥路径（用于加密前端数据，需与私钥配对）
+  rsa-public-key: "./key/PublicKey.pem"
+  # 配置加密私钥路径（用于解密 config.yml 中的 ENC[] 加密字段）
+  config-key: "./key/config-key.pem"
+# ! 公共SFTP服务账号（标签上传、中国联通等模块共用，后续模块可复用）
+sftp_account:
+  # 专用SFTP账号
+  sftp_username: "datacenter"
+  # SFTP密码（ENC[]加密存储）
+  sftp_password: "ENC[替换为加密后的密文]"
+# ! 标签上传模块配置
+hotlabel:
+  # 标签上传允许访问的根路径（后端强制限制）
+  root_path: "/hotlabel"
+# ! 中国联通模块配置
+chinaunicom:
+  # 中国联通允许访问的根路径（后端强制限制）
+  root_path: "/ChinaUnicom"
+# ! 数据库配置
+database:
+  # 用户名
+  username: your_db_user
+  # 密码（ENC[]加密存储）
+  password: ENC[替换为加密后的密文]
+  host: localhost
+  # 端口
+  port: 3306
+  # 数据库名
+  database: sftp
+  # 表前缀
+  prefix: t_
+  # 编码方式
+  charset: utf8mb4
+  # 连接字符串参数
+  query: parseTime=True&loc=Local
+# ! 邮箱配置
+email:
+  # 发送方邮箱地址
+  from: sender@example.com
+  # 发送方邮箱密码（ENC[]加密存储）
+  password: ENC[替换为加密后的密文]
+  # SMTP 服务器地址
+  host: smtp.example.com
+  # SMTP 服务器端口
+  port: 465
+  # 主题前缀
+  subject: 数据传输账号
+  # 附件内容
+  content: |
+    Welcome to Use Ho&Bro's SFTP
+    Host:your.sftp.host  Port:2222
+    Protocol:SFTP - SSH File Transfer Prorocol
+    Logon Type:%s
+    User:%s
+    Password:%s
+  # 邮件正文HTML内容
+  body: |
+    你好，<br>
+    &nbsp;&nbsp;附件为你申请的数据传输账号信息，请查收。有问题请联系IT。
+  # 仅用于报告发送，收件人邮箱列表
+  tos:
+    - "report1@example.com"
+    - "report2@example.com"
+# ! jwt Token 配置
+jwt:
+  # 密钥（ENC[]加密存储）
+  secret: ENC[替换为加密后的密文]
+  # 过期时间 单位小时
+  expire: 4
+  # 签发人
+  issuer: your_issuer
+# ! 脚本路径
+script:
+  # 创建账户脚本
+  adduser_script: "./script/createSftpUser.sh"
+  # 更新账户脚本
+  updateuser_script: "./script/updateSftpUser.sh"
+  # 删除账户脚本
+  deleteuser_script: "./script/deleteSftpUser.sh"
+  # 批量删除账户脚本
+  batch_delete_script: "./script/batchDeleteUsers.sh"
+  # 生成密钥脚本
+  setupkey_script: "./script/setupSftpKey.sh"
+  # 系统更新脚本
+  system_update_script: "./script/systemUpdate.sh"
+  # 系统加固检查脚本
+  system_security_check_script: "./script/systemSecurityCheck.sh"
+  # 修复ssh日志脚本
+  fix_ssh_log_script: "./script/fix-ssh-log.sh"
+  # 传输次数统计脚本
+  trans_count_script: "./script/transCount.sh"
+  # 访问次数统计脚本
+  access_count_script: "./script/accessCount.sh"
+# ! sftp日志文件路径
+logfiles:
+  # 总日志文件路径
+  logfile: "/var/log/sftp.log"
+  # 切割的每日日志文件路径，例：/data/sftplogs/sftp.log-%s 日期用%s表示
+  daily_logfile: "/data/sftplogs/sftp.log-%s"
+# ! sftp配置
+sftp:
+  host: "localhost"
+  port: 22
+# ! 计划任务配置（初次部署有效，后续在页面修改，或数据库）
+scheduler:
+  # 卡巴斯基安全报告发送时间，格式为："分 时 日 月 周" 每天13:00发送
+  k_report_time: "0 13 * * *"
+  # 卡巴斯基隔离区检查时间，格式为："分 时 日 月 周" 每30分钟检查一次
+  k_isolate_zone_time: "*/30 * * * *"
+  # 系统更新时间，格式为："分 时 日 月 周" 每天00:00更新
+  system_update_time: "0 0 * * *"
+  # 系统加固检查时间，格式为："分 时 日 月 周" 每天00:00检查一次
+  system_security_check_time: "0 0 * * *"
+  # 更新报告发送时间，格式为："分 时 日 月 周" 每周一09:00发送
+  update_report_time: "0 9 * * 1"
+  # 加固报告发送时间，格式为："分 时 日 月 周" 每天23:00发送
+  hardening_report_time: "0 23 * * *"
