@@ -29,3 +29,5 @@ backend/config.yml
 
 dist/
 dist.zip
+
+.repo_backup.git
