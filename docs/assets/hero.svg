@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="100%" role="img" aria-label="SFTP 管理平台：一站式 SFTP 账号管理与服务器安全运维平台">
+  <title>SFTP 管理平台：一站式 SFTP 账号管理与服务器安全运维平台</title>
+  <defs>
+    <radialGradient id="auroraG" cx="78%" cy="8%" r="55%">
+      <stop offset="0%" stop-color="#7CE3B1" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#7CE3B1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auroraB" cx="95%" cy="45%" r="45%">
+      <stop offset="0%" stop-color="#409EFF" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#409EFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 夜空背景 -->
+  <rect x="0" y="0" width="1200" height="520" rx="16" fill="#0B1622"/>
+  <rect x="0" y="0" width="1200" height="520" rx="16" fill="url(#auroraG)"/>
+  <rect x="0" y="0" width="1200" height="520" rx="16" fill="url(#auroraB)"/>
+
+  <!-- 左侧：标题区 -->
+  <text x="64" y="118" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="15" letter-spacing="3" fill="#7CE3B1">SFTP_MANAGEMENT · ACCOUNT &amp; SECURITY OPS</text>
+  <text x="64" y="182" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="52" font-weight="700" fill="#F5F7FA">SFTP 管理平台</text>
+  <text x="64" y="226" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="18" fill="#C6D0DC">一站式 SFTP 账号管理与服务器安全运维平台</text>
+
+  <text x="64" y="284" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="15" fill="#8A94A6">Go 1.23 · Gin · GORM · MariaDB  |  Vue 2 · Element UI</text>
+  <text x="64" y="312" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="15" fill="#8A94A6">JWT + RSA · LDAP/AD · PAM · 50+ 安全基线</text>
+
+  <!-- 关键能力 chips -->
+  <g font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="15">
+    <rect x="64" y="352" width="196" height="36" rx="18" fill="none" stroke="#22364E"/>
+    <text x="84" y="375" fill="#C6D0DC">密码/密钥/混合认证</text>
+    <rect x="272" y="352" width="112" height="36" rx="18" fill="none" stroke="#22364E"/>
+    <text x="292" y="375" fill="#C6D0DC">双控验证</text>
+    <rect x="396" y="352" width="140" height="36" rx="18" fill="none" stroke="#22364E"/>
+    <text x="416" y="375" fill="#C6D0DC">50+ 安全基线</text>
+  </g>
+
+  <!-- 右侧：双面板浏览器 motif -->
+  <!-- 面板 A：文件列表 -->
+  <rect x="660" y="96" width="280" height="336" rx="10" fill="#101E30" stroke="#22364E"/>
+  <circle cx="682" cy="120" r="4" fill="#7CE3B1"/>
+  <text x="696" y="126" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="14" fill="#8A94A6">luliya@ChinaUnicom:/</text>
+  <line x1="660" y1="140" x2="940" y2="140" stroke="#22364E"/>
+  <g font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="15" fill="#C6D0DC">
+    <rect x="672" y="156" width="14" height="11" rx="2" fill="#409EFF" opacity="0.85"/>
+    <text x="696" y="166">input/</text>
+    <rect x="672" y="196" width="14" height="11" rx="2" fill="#409EFF" opacity="0.85"/>
+    <text x="696" y="206">output/</text>
+    <rect x="672" y="236" width="14" height="11" rx="2" fill="#409EFF" opacity="0.85"/>
+    <text x="696" y="246">reports/</text>
+    <rect x="672" y="276" width="14" height="11" rx="2" fill="#409EFF" opacity="0.85"/>
+    <text x="696" y="286">backup/</text>
+  </g>
+  <!-- 聚焦行高亮 -->
+  <rect x="664" y="228" width="272" height="28" rx="6" fill="#409EFF" opacity="0.14"/>
+  <rect x="664" y="228" width="3" height="28" fill="#409EFF"/>
+  <!-- 底部键盘提示 -->
+  <text x="676" y="414" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="13" fill="#5A6B82">Enter 打开 · Del 删除 ·  返回</text>
+
+  <!-- 分隔线 motif -->
+  <line x1="950" y1="108" x2="950" y2="420" stroke="#22364E" stroke-width="2"/>
+  <rect x="945" y="246" width="10" height="36" rx="5" fill="#33507A"/>
+
+  <!-- 面板 B：传输队列 -->
+  <rect x="960" y="96" width="180" height="336" rx="10" fill="#101E30" stroke="#22364E"/>
+  <text x="976" y="126" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="14" fill="#8A94A6">传输队列</text>
+  <line x1="960" y1="140" x2="1140" y2="140" stroke="#22364E"/>
+  <g font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="14">
+    <text x="976" y="172" fill="#7CE3B1">↑</text>
+    <text x="994" y="172" fill="#C6D0DC">config.tar.gz</text>
+    <rect x="976" y="182" width="148" height="6" rx="3" fill="#22364E"/>
+    <rect x="976" y="182" width="104" height="6" rx="3" fill="#7CE3B1"/>
+    <text x="976" y="226" fill="#409EFF">↓</text>
+    <text x="994" y="226" fill="#C6D0DC">access.log</text>
+    <rect x="976" y="236" width="148" height="6" rx="3" fill="#22364E"/>
+    <rect x="976" y="236" width="60" height="6" rx="3" fill="#409EFF"/>
+    <text x="976" y="280" fill="#7CE3B1">✓</text>
+    <text x="994" y="280" fill="#8A94A6">report.html</text>
+  </g>
+</svg>
