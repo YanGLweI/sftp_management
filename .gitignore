@@ -31,3 +31,4 @@ dist/
 dist.zip
 
 .repo_backup.git
+dist_*.zip
