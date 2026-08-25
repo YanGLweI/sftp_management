@@ -50,7 +50,8 @@
 | 能力 | 说明 |
 |------|------|
 | **数据看板** | 近 7 天传输量/访问量趋势、账号总数与月度新增、传输量 Top10 排行 |
-| **认证与传输安全** | JWT 鉴权 + 前端密码 RSA 加密传输；敏感操作支持双控验证 |
+| **认证与传输安全** | JWT 鉴权 + 前端密码 RSA 加密传输；敏感操作支持双控验证（如删除账号需第二账号复核） |
+| **实时推送** | 后端任务执行状态经 WebSocket 实时推送前端 |
 | **实时推送** | 后端任务执行状态经 WebSocket 实时推送前端 |
 | **优雅关闭** | 信号监听，等待在途请求处理完毕后停止服务 |
 
@@ -84,7 +85,8 @@ npm run dev             # 默认监听 :9529
 ### 首次登录
 
 - 默认管理员账号：`admin` / `admin1234567890.`（首次登录后请立即修改密码）
-- 登录密码经 RSA 加密传输；支持 LDAP/AD 与本地账号两种登录通道
+- 登录密码经 RSA 加密传输：前端通过 `GET /rsa/public-key` 动态加载公钥并加密，不再硬编码在前端代码中
+- 支持 LDAP/AD 与本地账号两种登录通道
 - 涉及账号删除等敏感操作时，平台会触发双控验证（第二账号复核）
 
 ## 系统架构
@@ -93,6 +95,44 @@ npm run dev             # 默认监听 :9529
 
 - **后端**：Go 1.23 · Gin · GORM · gorilla/websocket · go-ldap · pkg/sftp · robfig/cron
 - **前端**：Vue 2 · Element UI · ECharts · JSEncrypt · dayjs
+
+## RSA 公钥说明
+
+### 架构变化
+
+本次更新将前端 RSA 公钥从硬编码方式改为从后端 API 动态获取，主要变更包括：
+
+#### 前端改造
+
+- **动态加载公钥**: 通过 `GET /rsa/public-key` 接口获取标准 PEM 格式公钥
+- **缓存机制**: 首次加载后缓存在内存中，避免重复网络请求
+- **异步加密模式**: 所有密码字段加密改为异步 (`await rsaEncrypt()`) 处理
+- **Promise 优化**: 并发请求共享同一个 loading Promise，无内存泄漏风险
+
+#### 后端新增
+
+- **API 端点**: `GET /rsa/public-key` - 返回标准 X.509 PKIX PEM 格式公钥
+- **线程安全**: 使用 RWMutex 保护 RSA 操作，防止并发竞态条件
+- **类型验证**: 显式检查公钥是否为 RSA 类型，防止非 RSA 公钥导致加密失败
+- **错误脱敏**: API 错误消息不泄露敏感信息，详细日志记录到服务器 logs
+
+#### 安全优势
+
+✅ **密钥轮换无需重新编译**: 修改私钥/公钥后只需重启后端，前端自动同步新公钥  
+✅ **符合 DevOps 最佳实践**: 密钥配置与应用代码分离，便于自动化部署  
+✅ **X.509 标准兼容**: 遵循 RFC 8017 标准，支持多种加密库和工具链  
+✅ **加密算法**: 前端使用 RSA-OAEP 加密，后端支持 PKCS1v15 解密  
+
+#### 兼容性
+
+- ✅ 向后兼容旧的前端版本（硬编码公钥降级方案已实现）
+- ⚠️ 建议所有前端组件统一使用 `await rsaEncrypt()` 异步加密模式
+- 📝 浏览器兼容性：依赖 ES6 Promise + async/await，目标环境需支持（IE11 需 polyfill）
+
+更多信息见:
+- [`frontend/src/utils/encrypt.js`](frontend/src/utils/encrypt.js) - 前端 RSA 加密核心代码
+- [`backend/tools/rsa.go`](backend/tools/rsa.go) - 后端 RSA 工具函数
+- [`backend/controller/rsa_controller.go`](backend/controller/rsa_controller.go) - RSA 公钥接口控制器
 
 ## 配置说明
 
