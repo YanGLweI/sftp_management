@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"log"
 	"net/http"
 	"sftpbackend/tools"
 	"github.com/gin-gonic/gin"
@@ -10,9 +11,11 @@ import (
 func GetPublicKey(c *gin.Context) {
 	publicKey, err := tools.GetPublicKey()
 	if err != nil {
+		// 详细错误记录到 server logs
+		log.Printf("获取公钥失败：%v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "获取公钥失败：" + err.Error(),
+			"message": "公钥服务暂时不可用，请稍后重试",
 		})
 		return
 	}

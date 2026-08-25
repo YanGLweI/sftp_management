@@ -369,7 +369,7 @@ export default {
       // 密码使用与登录平台一致的 RSA 加密传输，留空表示不修改
       let encryptedPwd = ''
       if (this.ldapForm.password) {
-        encryptedPwd = rsaEncrypt(this.ldapForm.password)
+        encryptedPwd = await rsaEncrypt(this.ldapForm.password)
         if (!encryptedPwd) {
           this.$message.error('密码加密失败，请重试')
           this.submitLoading = false
@@ -439,7 +439,7 @@ export default {
         // 密码使用与登录平台一致的 RSA 加密传输
         let encryptedPwd = ''
         if (this.ldapForm.password) {
-          encryptedPwd = rsaEncrypt(this.ldapForm.password)
+          encryptedPwd = await rsaEncrypt(this.ldapForm.password)
           if (!encryptedPwd) {
             this.$message.error('密码加密失败，请重试')
             this.testLoading = false

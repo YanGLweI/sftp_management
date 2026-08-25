@@ -13,14 +13,14 @@ import (
 )
 
 var (
-	raMutex sync.RWMutex
+	rsaMutex sync.RWMutex
 )
 
 // Encrypt RSA 加密（用于前端传输数据到后端）
 // 注意：使用公钥加密，确保只有持有私钥的后端才能解密
 func Encrypt(plaintext string) (string, error) {
-	raMutex.RLock()
-	defer raMutex.RUnlock()
+	rsaMutex.RLock()
+	defer rsaMutex.RUnlock()
 
 	publicKey := config.GlobalConfig.System.RSAPublicKey
 	if publicKey == nil {
@@ -41,8 +41,8 @@ func Encrypt(plaintext string) (string, error) {
 // Decrypt RSA 解密（用于后端解密存储的数据）
 // 注意：使用私钥解密，确保只有持有私钥的系统才能读取明文
 func Decrypt(ciphertext string) (string, error) {
-	raMutex.RLock()
-	defer raMutex.RUnlock()
+	rsaMutex.RLock()
+	defer rsaMutex.RUnlock()
 
 	privateKey := config.GlobalConfig.System.RSAPrivateKey
 	if privateKey == nil {
@@ -74,8 +74,8 @@ func Decrypt(ciphertext string) (string, error) {
 // DecryptPassword 解密前端传来的 RSA 加密密码（Base64 编码，PKCS1v15 模式）
 // 注意：使用私钥解密，确保只有持有私钥的系统才能读取明文
 func DecryptPassword(encryptedPassword string) (string, error) {
-	raMutex.RLock()
-	defer raMutex.RUnlock()
+	rsaMutex.RLock()
+	defer rsaMutex.RUnlock()
 
 	privateKey := config.GlobalConfig.System.RSAPrivateKey
 	if privateKey == nil {
@@ -99,12 +99,17 @@ func DecryptPassword(encryptedPassword string) (string, error) {
 
 // GetPublicKey 返回 RSA 公钥 PEM 格式
 func GetPublicKey() (string, error) {
-	raMutex.RLock()
-	defer raMutex.RUnlock()
+	rsaMutex.RLock()
+	defer rsaMutex.RUnlock()
 
 	publicKey := config.GlobalConfig.System.RSAPublicKey
 	if publicKey == nil {
 		return "", fmt.Errorf("RSA 公钥未初始化")
+	}
+
+	// 显式类型检查：确保是 RSA 公钥
+	if _, ok := interface{}(publicKey).(*rsa.PublicKey); !ok {
+		return "", fmt.Errorf("公钥不是有效的 RSA 类型")
 	}
 
 	// 将 RSA 公钥转换为 x509.PublicKey 接口

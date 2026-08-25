@@ -355,7 +355,10 @@ export default {
             this.$message.success('SFTP 登录成功')
             this.SftpBrowserVisible = true
           }
-        } catch {} finally {
+        } catch (error) {
+          console.error('SFTP 登录失败:', error)
+          this.$message.error('登录失败：' + (error.message || '未知错误'))
+        } finally {
           this.SftpDialogFormVisible = false
           this.buttonLoading = false
         }
@@ -383,7 +386,10 @@ export default {
             this.$message.success('SFTP登录成功')
             this.SftpBrowserVisible = true
           }
-        } catch {} finally {
+        } catch (error) {
+          console.error('SFTP 登录失败:', error)
+          this.$message.error('登录失败：' + (error.message || '未知错误'))
+        } finally {
           this.SftpDialogFormVisible = false
           this.buttonLoading = false
         }

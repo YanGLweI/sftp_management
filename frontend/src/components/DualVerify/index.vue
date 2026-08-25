@@ -98,6 +98,8 @@ export default {
       } catch (error) {
         // 后端校验失败（非产业部账号/密码错误等），保留弹窗并展示错误原因
         this.errorMsg = error.message || '双控验证失败'
+        this.resolver?.reject(new Error(this.errorMsg))
+        this.resolver = null
       } finally {
         this.verifying = false
       }

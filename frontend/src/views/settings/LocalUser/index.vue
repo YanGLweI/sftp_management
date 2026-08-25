@@ -412,7 +412,8 @@ export default {
           this.$message.error(res.message)
         }
       } catch (e) {
-        console.error(e)
+        console.error('重置密码失败:', e)
+        this.$message.error('重置密码失败，请重试')
       }
       this.resetLoading = false
     },
