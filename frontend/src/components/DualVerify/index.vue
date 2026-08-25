@@ -89,7 +89,8 @@ export default {
       this.verifying = true
       this.errorMsg = ''
       try {
-        const res = await reqSftpDualVerify({ username, password: rsaEncrypt(password) })
+        const rsaPassword = await rsaEncrypt(password)
+        const res = await reqSftpDualVerify({ username, password: rsaPassword })
         if (res.code === 200) {
           this.dialogVisible = false
           this.resolver && this.resolver.resolve(res.data.dual_token)

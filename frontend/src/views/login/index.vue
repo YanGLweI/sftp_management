@@ -182,32 +182,34 @@ export default {
         this.$refs.password.focus()
       })
     },
-    handleLogin() {
-      this.$refs.loginForm.validate(valid => {
-        if (valid) {
-          // 登录验证通过后，将当前选择的登录类型存入localStorage
-          localStorage.setItem('loginType', this.loginForm.loginType)
-          const {username,password,loginType} = this.loginForm
-          const rsaPassword = rsaEncrypt(password)
+    async handleLogin() {
+      this.$refs.loginForm.validate(async (valid) => {
+        if (!valid) return
+            
+        // 登录验证通过后，将当前选择的登录类型存入 localStorage
+        localStorage.setItem('loginType', this.loginForm.loginType)
+        const {username, password, loginType} = this.loginForm
+            
+        try {
+          const rsaPassword = await rsaEncrypt(password)
           this.loading = true
-          this.$store.dispatch('user/login', {username,password:rsaPassword,loginType}).then(res => {
-            // 检查是否需改密或密码过期（旧密码由公共弹框组件从登录表单预填）
-            if (res.data && (res.data.must_change_password || res.data.password_expired)) {
-              // 传递受限 Token 给组件（仅限需改密/密码过期场景）
-              this.currentChangeToken = res.data.token
-              this.changePasswordDialogVisible = true
-              this.loading = false
-            } else {
-              // 登录成功跳转：目标路由由路由守卫根据权限动态处理
-              this.$router.push({ path: this.redirect || '/' })
-              this.loading = false
-            }
-          }).catch(() => {
+          const res = await this.$store.dispatch('user/login', { username, password: rsaPassword, loginType })
+              
+          // 检查是否需改密或密码过期（旧密码由公共弹框组件从登录表单预填）
+          if (res.data && (res.data.must_change_password || res.data.password_expired)) {
+            // 传递受限 Token 给组件（仅限需改密/密码过期场景）
+            this.currentChangeToken = res.data.token
+            this.changePasswordDialogVisible = true
             this.loading = false
-          })
-        } else {
-          console.log('error submit!!')
-          return false
+          } else {
+            // 登录成功跳转：目标路由由路由守卫根据权限动态处理
+            this.$router.push({ path: this.redirect || '/' })
+            this.loading = false
+          }
+        } catch (error) {
+          console.error('登录失败:', error)
+          this.$message.error('登录失败：' + (error.message || '未知错误'))
+          this.loading = false
         }
       })
     },

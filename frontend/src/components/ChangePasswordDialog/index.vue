@@ -101,8 +101,8 @@ export default {
       }
       this.loading = true
       try {
-        const rsaOldPwd = rsaEncrypt(this.form.oldPassword)
-        const rsaNewPwd = rsaEncrypt(newPassword)
+        const rsaOldPwd = await rsaEncrypt(this.form.oldPassword)
+        const rsaNewPwd = await rsaEncrypt(newPassword)
         let res
         if (this.changeToken) {
           // /file 公共页面（可能无平台 token）：使用登录时签发的受限改密凭证

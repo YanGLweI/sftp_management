@@ -343,16 +343,16 @@ export default {
     async sftplogin() {
       if (this.activeName == 'password') {
         const { username, password } = this.SftpForm
-        const rsaPassword = rsaEncrypt(password)
         if (!username || !password) return this.$message.warning('请输入账号密码')
         this.buttonLoading = true
         try {
+          const rsaPassword = await rsaEncrypt(password)
           const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword })
           if (res.code == 200) {
             this.currentLoginType = this.activeName
             sessionStorage.setItem("sftp_token", res.data.sftp_token)
             this.uploadHeaders['X-SFTP-Token'] = res.data.sftp_token
-            this.$message.success('SFTP登录成功')
+            this.$message.success('SFTP 登录成功')
             this.SftpBrowserVisible = true
           }
         } catch {} finally {
@@ -360,13 +360,13 @@ export default {
           this.buttonLoading = false
         }
       } else if (this.activeName == 'hotlabel' || this.activeName == 'chinaunicom') {
-        // 标签上传/中国联通：提交账号密码，由后端根据模块配置决定本地或LDAP验证
+        // 标签上传/中国联通：提交账号密码，由后端根据模块配置决定本地或 LDAP 验证
         const { username, password } = this.SftpForm
-        const rsaPassword = rsaEncrypt(password)
         const isLocal = this.moduleConfigs[this.activeName] === 'local'
         if (!username || !password) return this.$message.warning(isLocal ? '请输入本地账号密码' : '请输入域账号密码')
         this.buttonLoading = true
         try {
+          const rsaPassword = await rsaEncrypt(password)
           const res = await this.$API.sftpuser.reqSftpLogin({ username, password: rsaPassword, loginType: this.activeName })
           if (res.code == 200) {
             if (res.data && res.data.must_change_password) {

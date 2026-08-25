@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"sftpbackend/config"
 	"sync"
@@ -93,4 +95,32 @@ func DecryptPassword(encryptedPassword string) (string, error) {
 	}
 
 	return string(plaintext), nil
+}
+
+// GetPublicKey 返回 RSA 公钥 PEM 格式
+func GetPublicKey() (string, error) {
+	raMutex.RLock()
+	defer raMutex.RUnlock()
+
+	publicKey := config.GlobalConfig.System.RSAPublicKey
+	if publicKey == nil {
+		return "", fmt.Errorf("RSA 公钥未初始化")
+	}
+
+	// 将 RSA 公钥转换为 x509.PublicKey 接口
+	x509PubKey := interface{}(publicKey)
+	
+	// 转换为 DER 编码
+	publicKeyDER, err := x509.MarshalPKIXPublicKey(x509PubKey)
+	if err != nil {
+		return "", fmt.Errorf("x509 编码失败：%w", err)
+	}
+
+	// 转换为 PEM 格式
+	pemBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyDER,
+	})
+
+	return string(pemBytes), nil
 }

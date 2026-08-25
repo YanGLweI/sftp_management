@@ -367,7 +367,7 @@ export default {
               passwordNeverExpires: this.userForm.passwordNeverExpires
             })
           } else {
-            const rsaPassword = rsaEncrypt(this.userForm.password)
+            const rsaPassword = await rsaEncrypt(this.userForm.password)
             res = await createLocalUser({
               username: this.userForm.username,
               password: rsaPassword,
@@ -403,7 +403,7 @@ export default {
       }
       this.resetLoading = true
       try {
-        const rsaPassword = rsaEncrypt(this.resetPassword)
+        const rsaPassword = await rsaEncrypt(this.resetPassword)
         const res = await resetLocalUserPassword(this.resetUserId, { password: rsaPassword })
         if (res.code === 200) {
           this.$message.success(res.message)

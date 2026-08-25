@@ -1,24 +1,43 @@
 import JSEncrypt from 'jsencrypt'
+import axios from 'axios'
 
-// 从后端获取的公钥，或是写死在配置文件中
-const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA4BvuaUCd62R3mH4X/AT7
-7FWZQI1R6IPqLpn3fGQVIqUDKgqW3KiPlY1LYI5JhYz8O5krzA9kuEkGA6E0VqYs
-qoYRU6nI0IG/QbkmQihxZGk0pHoQ5yD2L3Ib3AfBJLgq/9Tlrhyr3+X6T480+NXH
-R7HL4V26sdv5cid+0Hdnd2sZqQwrDzAdYumnxW3haWQYbu6rty/sYNMfAU05C/Rh
-PRICjBuluYryQn77RSscaxLKWuvq4nAFpMM3DkT8gXtHNZGqzp+iBJL5A9f/u5jc
-tirRFxiJvHATJtdEBB8HEfkUj3DX1WqiCJoLFRGyKjRs5WlOLMdE12PuBq5xzc1i
-dxpAeVN8Gx6HTT+c3Ok17zIuKxDzO7APjILS7O2x+p9d1VmU/gVuApZIPXhst1sb
-txG1f4LtS677OIsymt2YIlIWu9SE55R/+zXEqWiMcPOWf6O0S6Kuu/C6pXsRbZlM
-5qVcEdJVFPR6yTMVBvYiGXnm7eJq4locRxzzl1h5XYqzryhpZTky8h0XSLeQ2K3T
-K8M4uDOObwozXDJiS+dSxfRgXE7RZvVZgErqK0XN04dOtmOEnfNH4kxBU5REk2FA
-tRPzz5KQQzk4HQI/7/GIpGBPgU/HaUaMVGcKpRUdSoI5ivOjEgPvD2eFYYQ+glwX
-nBcHL1zRKmqaNwuVBj+Y7IMCAwEAAQ==
------END PUBLIC KEY-----
-`
+let publicKeyCache = null
+let loading = false
 
-export function rsaEncrypt(txt) {
+export async function loadPublicKey() {
+  if (publicKeyCache) return publicKeyCache
+  if (loading) {
+    // 等待公钥加载完成
+    return new Promise((resolve, reject) => {
+      const timer = setInterval(() => {
+        if (publicKeyCache) {
+          clearInterval(timer)
+          resolve(publicKeyCache)
+        } else if (!loading) {
+          clearInterval(timer)
+          reject(new Error('公钥加载超时'))
+        }
+      }, 100)
+    })
+  }
+  
+  loading = true
+  try {
+    const res = await axios.get('/dev-api/rsa/public-key')
+    if (res.data.code === 200) {
+      publicKeyCache = res.data.data
+      return publicKeyCache
+    }
+    throw new Error(res.data.message || '获取公钥失败')
+  } finally {
+    loading = false
+  }
+}
+
+// rsaEncrypt 改为异步函数以支持动态获取公钥
+export async function rsaEncrypt(txt) {
+  const pubKey = await loadPublicKey()
   const encryptor = new JSEncrypt()
-  encryptor.setPublicKey(PUBLIC_KEY) // 设置公钥
-  return encryptor.encrypt(txt)      // 执行加密
+  encryptor.setPublicKey(pubKey) // 设置公钥
+  return encryptor.encrypt(txt)  // 执行加密
 }

@@ -490,7 +490,7 @@ export default {
               for (let key of Object.keys(this.userForm)){
                 if (key == 'password'){
                   // 对密码加密
-                  const rsaPassword = rsaEncrypt(this.userForm[key])
+                  const rsaPassword = await rsaEncrypt(this.userForm[key])
                   formData.append(key, rsaPassword)
                   continue
                 }else if ( key == 'checkPass'){
@@ -718,21 +718,21 @@ export default {
       this.SftpForm.username = row.name
       this.SftpForm.password = ''
     },
-    // 发送请求，登录sftp
+    // 发送请求，登录 sftp
     async sftplogin(){
       // 根据登录类型发送请求
       if(this.activeName == 'password'){
         // 密码登录
         // 验证密码是否为空
         const {username,password} = this.SftpForm
-        const rsaPassword = rsaEncrypt(password)
         if(password == ''){
-          this.$message({type:'warning',message:'请输入SFTP密码'})
+          this.$message({type:'warning',message:'请输入 SFTP 密码'})
           return
         }
         // loading
         this.buttonLoading = true
         try {
+          const rsaPassword = await rsaEncrypt(password)
           const result = await this.$API.sftpuser.reqSftpLogin({username,password:rsaPassword})
           if(result.code == 200){
             // 存储SFTP-Token
